@@ -21,9 +21,8 @@
        ;(m-state-assign (variable stmt) (expression stmt) (m-state-declare variable s)))
       ((declaration? stmt) (m-state-declare (variable stmt) s))
       ((assignment? stmt) (m-state-assign (variable stmt) (expression stmt) s))
-      ((eq? 'return (car stmt)) (m-state-assign (car stmt) (cadr stmt) s)))))
-
-
+      ((return? stmt) (m-state-assign (car stmt) (cadr stmt) s)))))
+                                                               
 (define m-value
   (lambda (exp s)
     (cond
@@ -58,7 +57,7 @@
        (add-var variable (m-value exp s) (remove-var variable s))))))
 
 (define assignment?
-  (lambda (stmt)
+  (lambda (stmt))
     (eq? '= (operator stmt))))
   
 (define state-change?
