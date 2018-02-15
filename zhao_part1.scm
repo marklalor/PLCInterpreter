@@ -16,18 +16,28 @@
 (define m-state
   (lambda (stmt s)
     (cond
-      ((null? stmt) '(()()))
-      ;((declareandassign? stmt)
-       ;(m-state-assign (variable stmt) (expression stmt) (m-state-declare variable s)))
-      ((declaration? stmt) (m-state-declare (variable stmt) s))
-      ((assignment? stmt) (m-state-assign (variable stmt) (expression stmt) s))
-      ((return? stmt) (m-state-assign (car stmt) (cadr stmt) s)))))
-                                                               
-(define m-value
+      ((null? stmt) s)
+      ((declareandassign? stmt)
+       (m-state-assign (assignment-variable stmt) (assignment-expression stmt) (m-state-declare variable s)))
+      ((declaration? stmt) (m-state-declare (declaration-variable stmt) s))
+      ((assignment? stmt) (m-state-assign (assignment-variable stmt) (assignment-expression stmt) s))
+      ; if
+      ; while
+      ((return? stmt) (m-state-return (return-expression stmt) s)))))
+
+(define m-state-return
+  (lambda (stmt s)
+    (m-state-assign 'return (return-expression stmt) s)))
+
+(define m-value-exp-value car)
+(define m-value-exp-state cadr)
+
+(define m-value-exp
   (lambda (exp s)
     (cond
-      ((number? exp) (m-value-int exp))
-      ((list? exp) (m-value-int exp))
+      ((number? exp) '((m-value-int exp) s))
+      ((list? exp) '((m-value-int exp) s))
+      ((assignment? exp) '((m-value (assignment-variable exp) (m-state exp s)) (m-state exp s)))
       (else
        (m-value-variable exp s)))))
 
@@ -43,22 +53,35 @@
   (lambda (variable s)
     (cons (cons variable (car s)) (cons (cons 'error (cadr s)) '()))))
 
+; Statement checks
+
+(define assignment?
+  (lambda (stmt))
+    (eq? '= (operator stmt)))
+
 (define declaration?
   (lambda (stmt)
     (and (null? (cddr stmt)) (eq? (car stmt) 'var))))
-                           
+
+(define declarationandassign?
+  (lambda (stmt)
+    (and (not (null? (cddr stmt))) (eq? (car stmt) 'var))))
+
+(define return?
+  (lambda (stmt)
+    (eq? 'return (car stmt))))
+
+; State functions
+
 ; assigns variable to the value of exp, updates the variable in the state, and returns the variable value
 (define m-state-assign
   (lambda (variable exp s)
     (cond
       ((state-change? exp) ;changes state 
-       (m-state-assign variable (operand1 exp) (m-state exp s)))
+       (m-state-assign variable (m-value-exp-value (m-value-exp exp s)) (m-value-exp-state (m-value-exp exp s))))
        (else
        (add-var variable (m-value exp s) (remove-var variable s))))))
 
-(define assignment?
-  (lambda (stmt))
-    (eq? '= (operator stmt))))
   
 (define state-change?
   (lambda (stmt)
