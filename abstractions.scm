@@ -3,9 +3,17 @@
 (provide (all-defined-out))
 
 ; state abstractions
-(define var-list car s)
+(define var-list car)
 
 (define value-list cadr)
+
+(define carvar
+  (lambda (s)
+    (car (var-list s))))
+
+(define carval
+  (lambda (s)
+    (car (value-list s))))
 
 ; statement abstractions
 (define operator car)
@@ -22,9 +30,9 @@
 (define return-expression cadr)
 
 ; if statement (if conditional then-statement optional-else-statement)
-(define if-conditional cadr)
-(define if-then-statement caddr)
-(define if-else-statement cadddr)
+(define if-condition cadr)
+(define then-statement caddr)
+(define else-statement cadddr)
 
 ; while statement: (while conditional body-statement)
 (define while-conditional cadr)
@@ -35,3 +43,7 @@
 ; +, -, *, /
 (define binaryop-first cadr)
 (define binaryop-second caddr)
+
+
+(define operand1 cadr)
+(define operand2 caddr)

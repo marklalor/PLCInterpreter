@@ -1,10 +1,17 @@
+#!/usr/bin/racket
+#lang racket
+
 (require "simpleParser.scm")
 (require "abstractions.scm")
+(require "helpers.scm")
+
+(provide (all-defined-out))
 
 ; takes filename, parses file, evaluates parse tree, returns proper value
 (define interpret
   (lambda (filename)
-    (m-value 'return (m-state-stmt-list (parser filename) '(()())))))
+    (m-value-exp-value (m-value-exp 'return
+                                    (m-state-stmt-list (parser filename) (m-state-declare 'return '(()())))))))
 
 ; takes a statement list and state, returns the state after executing all statements
 (define m-state-stmt-list
@@ -17,53 +24,78 @@
   (lambda (stmt s)
     (cond
       ((null? stmt) s)
-      ((declareandassign? stmt)
-       (m-state-assign (assignment-variable stmt) (assignment-expression stmt) (m-state-declare variable s)))
+      ((declarationandassignment? stmt)
+       (m-state-assign (assignment-variable stmt) (assignment-expression stmt) (m-state-declare (declaration-variable stmt) s)))
       ((declaration? stmt) (m-state-declare (declaration-variable stmt) s))
       ((assignment? stmt) (m-state-assign (assignment-variable stmt) (assignment-expression stmt) s))
-      ; if
+      ((ifthenelse? stmt) (m-state-if (if-condition stmt) (then-statement stmt) (else-statement stmt) s))
+      ((ifthen? stmt) (m-state-if (if-condition stmt) (then-statement stmt) '() s))
       ; while
       ((return? stmt) (m-state-return (return-expression stmt) s)))))
 
 (define m-state-return
-  (lambda (stmt s)
-    (m-state-assign 'return (return-expression stmt) s)))
+  (lambda (expr s)
+    (m-state-assign 'return expr s)))
 
 (define m-value-exp-value car)
 (define m-value-exp-state cadr)
 
+(define 2tuple
+  (lambda (a b)
+    (cons a (cons b '()))))
+
 (define m-value-exp
   (lambda (exp s)
     (cond
-      ((number? exp) '((m-value-int exp) s))
-      ((list? exp) '((m-value-int exp) s))
-      ((assignment? exp) '((m-value (assignment-variable exp) (m-state exp s)) (m-state exp s)))
+      ;((number? exp) (2tuple (m-value-int exp s) s))
+      ((int-exp? exp)
+        (2tuple (m-value-exp-value (m-value-int exp s)) (m-value-exp-state (m-value-int exp s))))
+      ((bool-exp? exp)
+       (2tuple (m-value-exp-value (m-value-bool exp s)) (m-value-exp-state (m-value-bool exp s))))
+      ;handles side effects
+      ((assignment? exp)
+       (2tuple (m-value-exp-value (m-value-exp (assignment-variable exp)) (m-state-assign (assignment-variable exp) s))
+               (m-state-assign (assignment-variable exp) s)))
       (else
-       (m-value-variable exp s)))))
+       (2tuple (m-value-variable exp s)
+               s)))))
 
 (define m-value-variable
   (lambda (variable s)
     (cond
-      ((null? (var-list s)) error 'error "Unknown variable")
+      ((not (declared? variable s)) (error 'UndeclaredVariable))
+      ((not (assigned? variable s)) (error 'UnassignedVariable))
       ((eq? (car (var-list s)) variable) (car (value-list s)))
       (else
-       (m-value-variable variable (removefirstvar s))))))
+       (m-value-variable variable (cdrstate s))))))
+
+(define assigned?
+  (lambda (var s)
+    (cond
+      ((not (declared? var s)) #f)
+      ((eq? (carvar s) var)
+       (not (eq? (carval s) 'error)))
+      (else
+       (assigned? var (cdrstate s))))))
 
 (define m-state-declare
   (lambda (variable s)
-    (cons (cons variable (car s)) (cons (cons 'error (cadr s)) '()))))
+    (cond
+      ((declared? variable s) (error 'RedefiningVariable))
+      (else
+       (cons (cons variable (car s)) (cons (cons 'error (cadr s)) '()))))))
 
 ; Statement checks
 
 (define assignment?
-  (lambda (stmt))
-    (eq? '= (operator stmt)))
+  (lambda (stmt)
+    (and (list? stmt) (eq? '= (operator stmt)))))
 
 (define declaration?
   (lambda (stmt)
     (and (null? (cddr stmt)) (eq? (car stmt) 'var))))
 
-(define declarationandassign?
+(define declarationandassignment?
   (lambda (stmt)
     (and (not (null? (cddr stmt))) (eq? (car stmt) 'var))))
 
@@ -77,11 +109,26 @@
 (define m-state-assign
   (lambda (variable exp s)
     (cond
+      ((not (declared? variable s)) (error 'UndeclaredVariable))
       ((state-change? exp) ;changes state 
        (m-state-assign variable (m-value-exp-value (m-value-exp exp s)) (m-value-exp-state (m-value-exp exp s))))
-       (else
-       (add-var variable (m-value exp s) (remove-var variable s))))))
+      (else
+       (add-var variable (m-value-exp-value (m-value-exp exp s)) (remove-var variable (m-value-exp-state (m-value-exp exp s))))))))
 
+(define declared?
+  (lambda (var s)
+    (cond
+      ((null? (var-list s)) #f)
+      ((eq? (carvar s) var) #t)
+      (else (declared? var (cdrstate s))))))
+
+(define m-state-if
+  (lambda (if-cond then-stmt else-stmt s)
+    (cond
+      ((eq? (m-value-exp-value (m-value-exp if-cond s)) 'true)
+       (m-state then-stmt (m-value-exp-state (m-value-exp if-cond s))))
+      (else
+       (m-state else-stmt (m-value-exp-state (m-value-exp if-cond s)))))))
   
 (define state-change?
   (lambda (stmt)
@@ -92,22 +139,92 @@
        #f))))
 
 (define m-value-int
-  (lambda (exp)
+  (lambda (exp s)
     (cond
-      ((null? exp) 0)
-      ((number? exp) exp) ; '6
-      ((eq? (operator exp) '+)
-       (+ (m-value-int (operand1 exp)) (m-value-int (operand2 exp))))
-      ((eq? (operator exp) '-)
-       (- (m-value-int (operand1 exp)) (m-value-int (operand2 exp))))
-      ((eq? (operator exp) '*)
-       (* (m-value-int (operand1 exp)) (m-value-int (operand2 exp))))
-      ((eq? (operator exp) '%)
-       (remainder (m-value-int (operand1 exp)) (m-value-int (operand2 exp))))
-      ((eq? (operator exp) '/)
-       (quotient (m-value-int (operand1 exp)) (m-value-int (operand2 exp))))
-      (else
-       (error 'badoperation "Unknown operator")))))
+      ((null? exp) (2tuple 0 s))
+      ((number? exp) (2tuple exp s)) ; '6
+      ((eq? (operator exp) '+) (m-value-binaryop + exp s))
+      ((subtraction? exp) (m-value-binaryop - exp s))
+      ((negative? exp) (m-value-unaryop - exp s))
+      ((eq? (operator exp) '*) (m-value-binaryop * exp s))
+      ((eq? (operator exp) '/) (m-value-binaryop quotient exp s))
+      ((eq? (operator exp) '%) (m-value-binaryop remainder exp s))
+      (else (error 'badoperation "Unknown operator")))))
+
+(define negative?
+  (lambda (exp)
+    (and (eq? (operator exp) '-)
+         (null? (cddr exp)))))
+
+(define subtraction?
+  (lambda (exp)
+    (and (eq? (operator exp) '-)
+         (not (null? (cddr exp))))))
+
+(define m-value-bool
+  (lambda (exp s)
+    (cond
+      ((null? exp) (error 'EmptyCondition))
+      ((eq? exp 'true) (2tuple 'true s))
+      ((eq? exp 'false) (2tuple 'false s))
+      ((eq? (operator exp) '&&) (booltuple-to-atomtuple (m-value-booleanop myand exp s)))
+      ((eq? (operator exp) '||) (booltuple-to-atomtuple (m-value-booleanop myor exp s)))
+      ((eq? (operator exp) '==) (booltuple-to-atomtuple (m-value-binaryop eq? exp s)))
+      ((eq? (operator exp) '!=) (booltuple-to-atomtuple (m-value-binaryop noteq exp s)))
+      ((eq? (operator exp) '<) (booltuple-to-atomtuple (m-value-binaryop < exp s)))
+      ((eq? (operator exp) '<=) (booltuple-to-atomtuple (m-value-binaryop <= exp s)))
+      ((eq? (operator exp) '>) (booltuple-to-atomtuple (m-value-binaryop > exp s)))
+      ((eq? (operator exp) '>=) (booltuple-to-atomtuple (m-value-binaryop >= exp s)))
+      ((eq? (operator exp) '!) (booltuple-to-atomtuple (m-value-unaryop not exp s))) 
+      (else (error 'badoperation "Unknown operator")))))
+
+(define myand
+  (lambda (bool1 bool2)
+    (and (atomtobool bool1) (atomtobool bool2))))
+
+(define myor
+  (lambda (bool1 bool2)
+    (or (atomtobool bool1) (atomtobool bool2))))
+
+(define mynot
+  (lambda (bool)
+    (not (atomtobool bool))))
+
+(define wrapbool
+  (lambda (op bool1 bool2)
+    (op (atomtobool bool1) (atomtobool bool2))))
+
+(define atomtobool
+  (lambda (atom)
+    (cond
+      ((eq? atom 'true) #t)
+      ((eq? atom 'false) #f)
+      (else (error 'InvalidBool)))))
+
+(define noteq
+ (lambda (bool1 bool2)
+   (not (eq? bool1 bool2))))
+
+(define m-value-binaryop
+  (lambda (op exp s)
+    (2tuple (op (m-value-exp-value (m-value-exp (operand1 exp) s)) (m-value-exp-value (m-value-exp (operand2 exp) s)))
+               (m-value-exp-state (m-value-exp (operand2 exp) (m-value-exp-state (m-value-exp (operand1 exp) s)))))))
+    
+(define m-value-unaryop
+  (lambda (op exp s)
+    (2tuple (op (m-value-exp-value (m-value-exp (operand1 exp) s)))
+               (m-value-exp-state (m-value-exp (operand1 exp) s)))))
+
+(define booltuple-to-atomtuple
+  (lambda (booltuple)
+    (if (m-value-exp-value booltuple)
+      (2tuple 'true (m-value-exp-state booltuple))
+      (2tuple 'false (m-value-exp-state booltuple)))))
+
+(define m-value-booleanop
+  (lambda (op exp s)
+    (2tuple (op (m-value-exp-value (m-value-exp (operand1 exp) s)) (m-value-exp-value (m-value-exp (operand2 exp) s)))
+               (m-value-exp-state (m-value-exp (operand2 exp) (m-value-exp-state (m-value-exp (operand1 exp) s)))))))
 
 (define add-var
   (lambda (variable value s)
@@ -117,12 +234,27 @@
   (lambda (variable s)
     (cond
       ((null? (var-list s)) s)
-      ((eq? (car (var-list s)) variable) (removefirstvar s))
+      ((eq? (car (var-list s)) variable) (cdrstate s))
       (else
-       (add-var (car (var-list s)) (car (value-list s)) (remove-var variable (removefirstvar s)))))))
-
+       (add-var (car (var-list s)) (car (value-list s)) (remove-var variable (cdrstate s)))))))
 
 ; initializes a variable and returns the value of the initialized variable
 
-
-
+(eq? (interpret "test/programs/1") 150)
+(eq? (interpret "test/programs/2") -4)
+(eq? (interpret "test/programs/3") 10)
+(eq? (interpret "test/programs/4") 16)
+(eq? (interpret "test/programs/5") 220)
+(eq? (interpret "test/programs/6") 5)
+(eq? (interpret "test/programs/7") 6)
+(eq? (interpret "test/programs/8") 10)
+(eq? (interpret "test/programs/9") 5)
+(eq? (interpret "test/programs/10") -39)
+;(interpret "test/programs/11")
+;(interpret "test/programs/12")
+;(interpret "test/programs/13")
+;(interpret "test/programs/14")
+(eq? (interpret "test/programs/15") 'true)
+(eq? (interpret "test/programs/16") 100)
+(eq? (interpret "test/programs/17") 'false)
+(eq? (interpret "test/programs/18") 'true)
