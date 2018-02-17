@@ -3,19 +3,26 @@
 (provide (all-defined-out))
 
 ; state abstractions
+
+; get variable list of the state 
 (define var-list car)
 
+; get value list if the state 
 (define value-list cadr)
 
+; get first variable in variable list
 (define carvar
   (lambda (s)
     (car (var-list s))))
 
+; get first value in the variable list
 (define carval
   (lambda (s)
     (car (value-list s))))
 
 ; statement abstractions
+
+
 (define operator car)
 
 ; variable declaration: (var variable) or (var variable value)
@@ -35,7 +42,7 @@
 (define else-statement cadddr)
 
 ; while statement: (while conditional body-statement)
-(define while-conditional cadr)
+(define while-condition cadr)
 (define while-body-statement caddr)
 
 ; Other expressions...
