@@ -63,8 +63,8 @@
       ((assignment? exp)
        ; get the value of the assignment variable from the state after the assignment occurred
        ; return tuple of the value with the state after assignment
-       (2tuple (m-value-exp-value (m-value-exp (assignment-variable exp)) (m-state-assign (assignment-variable exp) s))
-               (m-state-assign (assignment-variable exp) s)))
+       (2tuple (m-value-exp-value (m-value-exp (assignment-variable exp) (m-state-assign (assignment-variable exp) (assignment-expression exp) s)))
+               (m-state-assign (assignment-variable exp) (assignment-expression exp) s)))
       (else
        (2tuple (m-value-variable exp s)
                s)))))
@@ -110,7 +110,7 @@
   (lambda (while-cond loop-body s)
     (cond
       ((eq? (m-value-exp-value (m-value-exp while-cond s)) 'true)
-       (m-state while-cond (m-state loop-body (m-value-exp-state (m-value-exp while-cond s)))))
+       (m-state-while while-cond loop-body (m-state loop-body (m-value-exp-state (m-value-exp while-cond s)))))
       (else
        (m-value-exp-state (m-value-exp while-cond s))))))
 
@@ -151,8 +151,10 @@
   (lambda (op exp s)
     ; value is the operator applied to the values of the first and second operand
     ; state can be changed by the first operand then the second operand 
-    (2tuple (op (m-value-exp-value (m-value-exp (operand1 exp) s)) (m-value-exp-value (m-value-exp (operand2 exp) s)))
-               (m-value-exp-state (m-value-exp (operand2 exp) (m-value-exp-state (m-value-exp (operand1 exp) s)))))))
+    ;(2tuple (op (m-value-exp-value (m-value-exp (operand1 exp) s)) (m-value-exp-value (m-value-exp (operand2 exp) s)))
+    ;           (m-value-exp-state (m-value-exp (operand2 exp) (m-value-exp-state (m-value-exp (operand1 exp) s)))))))
+    (2tuple (op (m-value-exp-value (m-value-exp (operand1 exp) s)) (m-value-exp-value (m-value-exp (operand2 exp) (m-value-exp-state (m-value-exp (operand1 exp) s)))))
+                (m-value-exp-state (m-value-exp (operand2 exp) (m-value-exp-state (m-value-exp (operand1 exp) s)))))))
 
 ; takes an unary operator, expression, and state, returns 2-tuple of value of expression and the possibly new state
 (define m-value-unaryop
@@ -185,22 +187,31 @@
 
 ; initializes a variable and returns the value of the initialized variable
 
-(eq? (interpret "test/programs/1") 150)
-(eq? (interpret "test/programs/2") -4)
-(eq? (interpret "test/programs/3") 10)
-(eq? (interpret "test/programs/4") 16)
-(eq? (interpret "test/programs/5") 220)
-(eq? (interpret "test/programs/6") 5)
-(eq? (interpret "test/programs/7") 6)
-(eq? (interpret "test/programs/8") 10)
-(eq? (interpret "test/programs/9") 5)
-(eq? (interpret "test/programs/10") -39)
+;(eq? (interpret "test/programs/1") 150)
+;(eq? (interpret "test/programs/2") -4)
+;(eq? (interpret "test/programs/3") 10)
+;(eq? (interpret "test/programs/4") 16)
+;(eq? (interpret "test/programs/5") 220)
+;(eq? (interpret "test/programs/6") 5)
+;(eq? (interpret "test/programs/7") 6)
+;(eq? (interpret "test/programs/8") 10)
+;(eq? (interpret "test/programs/9") 5)
+;(eq? (interpret "test/programs/10") -39)
 ;(interpret "test/programs/11")
 ;(interpret "test/programs/12")
 ;(interpret "test/programs/13")
 ;(interpret "test/programs/14")
-(eq? (interpret "test/programs/15") 'true)
-(eq? (interpret "test/programs/16") 100)
-(eq? (interpret "test/programs/17") 'false)
-(eq? (interpret "test/programs/18") 'true)
-(eq? (interpret "test/programs/19") 2)
+;(eq? (interpret "test/programs/15") 'true)
+;(eq? (interpret "test/programs/16") 100)
+;(eq? (interpret "test/programs/17") 'false)
+;(eq? (interpret "test/programs/18") 'true)
+;(eq? (interpret "test/programs/19") 128)
+;(eq? (interpret "test/programs/20") 12)
+;(eq? (interpret "test/programs/21") 30)
+;(eq? (interpret "test/programs/22") 11)
+;(eq? (interpret "test/programs/23") 1106)
+(eq? (interpret "test/programs/24") 12)
+(eq? (interpret "test/programs/25") 16)
+(eq? (interpret "test/programs/26") 72)
+(eq? (interpret "test/programs/27") 21)
+(eq? (interpret "test/programs/28") 164)
