@@ -38,47 +38,6 @@
   (lambda (expr s)
     (m-state-assign 'return expr s)))
 
-; get the value of the tuple
-(define m-value-exp-value car)
-
-; get the state of the tuple
-(define m-value-exp-state cadr)
-
-; takes a value and a state, creates a tuple of the value and state
-(define 2tuple
-  (lambda (value s)
-    (cons value (cons s '()))))
-
-; takes an expression and state
-; returns a tuple of the value of the expression and a possibly new state 
-(define m-value-exp
-  (lambda (exp s)
-    (cond
-      ;((number? exp) (2tuple (m-value-int exp s) s))
-      ((int-exp? exp)
-        (2tuple (m-value-exp-value (m-value-int exp s)) (m-value-exp-state (m-value-int exp s))))
-      ((bool-exp? exp)
-       (2tuple (m-value-exp-value (m-value-bool exp s)) (m-value-exp-state (m-value-bool exp s))))
-      ;handles side effects
-      ((assignment? exp)
-       ; get the value of the assignment variable from the state after the assignment occurred
-       ; return tuple of the value with the state after assignment
-       (2tuple (m-value-exp-value (m-value-exp (assignment-variable exp) (m-state-assign (assignment-variable exp) (assignment-expression exp) s)))
-               (m-state-assign (assignment-variable exp) (assignment-expression exp) s)))
-      (else
-       (2tuple (m-value-variable exp s)
-               s)))))
-
-; takes a variable and state, returns the value of the variable in the state
-(define m-value-variable
-  (lambda (variable s)
-    (cond
-      ((not (declared? variable s)) (error 'UndeclaredVariable))
-      ((not (assigned? variable s)) (error 'UnassignedVariable))
-      ((eq? (car (var-list s)) variable) (car (value-list s)))
-      (else
-       (m-value-variable variable (cdrstate s))))))
-
 ; takes a variable and a state, adds variable to state
 (define m-state-declare
   (lambda (variable s)
@@ -106,6 +65,7 @@
       (else
        (m-state else-stmt (m-value-exp-state (m-value-exp if-cond s)))))))
 
+; takes condition, loop body, and state, returns state
 (define m-state-while
   (lambda (while-cond loop-body s)
     (cond
@@ -113,6 +73,37 @@
        (m-state-while while-cond loop-body (m-state loop-body (m-value-exp-state (m-value-exp while-cond s)))))
       (else
        (m-value-exp-state (m-value-exp while-cond s))))))
+
+; takes an expression and state
+; returns a tuple of the value of the expression and a possibly new state 
+(define m-value-exp
+  (lambda (exp s)
+    (cond
+      ((int-exp? exp)
+        (2tuple (m-value-exp-value (m-value-int exp s))
+                (m-value-exp-state (m-value-int exp s))))
+      ((bool-exp? exp)
+       (2tuple (m-value-exp-value (m-value-bool exp s))
+               (m-value-exp-state (m-value-bool exp s))))
+      ;handles side effects
+      ((assignment? exp)
+       ; get the value of the assignment variable from the state after the assignment occurred
+       ; return tuple of the value with the state after assignment
+       (2tuple (m-value-exp-value (m-value-exp (assignment-variable exp) (m-state-assign (assignment-variable exp) (assignment-expression exp) s)))
+               (m-state-assign (assignment-variable exp) (assignment-expression exp) s)))
+      (else
+       (2tuple (m-value-variable exp s)
+               s)))))
+
+; takes a variable and state, returns the value of the variable in the state
+(define m-value-variable
+  (lambda (variable s)
+    (cond
+      ((not (declared? variable s)) (error 'UndeclaredVariable))
+      ((not (assigned? variable s)) (error 'UnassignedVariable))
+      ((eq? (car (var-list s)) variable) (car (value-list s)))
+      (else
+       (m-value-variable variable (cdrstate s))))))
 
 ; takes an expression and state, returns the value of the expression and a possibly new state 
 (define m-value-int
@@ -151,8 +142,6 @@
   (lambda (op exp s)
     ; value is the operator applied to the values of the first and second operand
     ; state can be changed by the first operand then the second operand 
-    ;(2tuple (op (m-value-exp-value (m-value-exp (operand1 exp) s)) (m-value-exp-value (m-value-exp (operand2 exp) s)))
-    ;           (m-value-exp-state (m-value-exp (operand2 exp) (m-value-exp-state (m-value-exp (operand1 exp) s)))))))
     (2tuple (op (m-value-exp-value (m-value-exp (operand1 exp) s)) (m-value-exp-value (m-value-exp (operand2 exp) (m-value-exp-state (m-value-exp (operand1 exp) s)))))
                 (m-value-exp-state (m-value-exp (operand2 exp) (m-value-exp-state (m-value-exp (operand1 exp) s)))))))
 
@@ -162,30 +151,11 @@
     (2tuple (op (m-value-exp-value (m-value-exp (operand1 exp) s)))
                (m-value-exp-state (m-value-exp (operand1 exp) s)))))
 
-(define booltuple-to-atomtuple
-  (lambda (booltuple)
-    (if (m-value-exp-value booltuple)
-      (2tuple 'true (m-value-exp-state booltuple))
-      (2tuple 'false (m-value-exp-state booltuple)))))
-
+; takes boolean operator, expression, and state and returns tuple of #t or #f and state
 (define m-value-booleanop
   (lambda (op exp s)
     (2tuple (op (m-value-exp-value (m-value-exp (operand1 exp) s)) (m-value-exp-value (m-value-exp (operand2 exp) s)))
                (m-value-exp-state (m-value-exp (operand2 exp) (m-value-exp-state (m-value-exp (operand1 exp) s)))))))
-
-(define add-var
-  (lambda (variable value s)
-    (cons (cons variable (var-list s)) (cons (cons value (value-list s)) '()))))
-
-(define remove-var
-  (lambda (variable s)
-    (cond
-      ((null? (var-list s)) s)
-      ((eq? (car (var-list s)) variable) (cdrstate s))
-      (else
-       (add-var (car (var-list s)) (car (value-list s)) (remove-var variable (cdrstate s)))))))
-
-; initializes a variable and returns the value of the initialized variable
 
 ;(eq? (interpret "test/programs/1") 150)
 ;(eq? (interpret "test/programs/2") -4)

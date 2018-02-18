@@ -9,6 +9,7 @@
   (lambda (s)
     (cons (cdr (var-list s)) (cons (cdr (value-list s)) '()))))
 
+; 
 (define int-exp?
   (lambda (exp)
     (cond
@@ -137,4 +138,26 @@
  (lambda (bool1 bool2)
    (not (eq? bool1 bool2))))
 
+(define booltuple-to-atomtuple
+  (lambda (booltuple)
+    (if (m-value-exp-value booltuple)
+      (2tuple 'true (m-value-exp-state booltuple))
+      (2tuple 'false (m-value-exp-state booltuple)))))
+
+(define add-var
+  (lambda (variable value s)
+    (cons (cons variable (var-list s)) (cons (cons value (value-list s)) '()))))
+
+(define remove-var
+  (lambda (variable s)
+    (cond
+      ((null? (var-list s)) s)
+      ((eq? (car (var-list s)) variable) (cdrstate s))
+      (else
+       (add-var (car (var-list s)) (car (value-list s)) (remove-var variable (cdrstate s)))))))
+
+; takes a value and a state, creates a tuple of the value and state
+(define 2tuple
+  (lambda (value s)
+    (cons value (cons s '()))))
   

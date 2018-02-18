@@ -54,3 +54,9 @@
 
 (define operand1 cadr)
 (define operand2 caddr)
+
+; get the value of the tuple
+(define m-value-exp-value car)
+
+; get the state of the tuple
+(define m-value-exp-state cadr)
