@@ -8,10 +8,10 @@
 (provide (all-defined-out))
 
 ; takes filename, parses file, evaluates parse tree, returns proper value
-(define interpret
-  (lambda (filename)
+(define interpret 
+  (lambda (filename) (with-handlers ([exn:fail? (lambda (exn) (exn-message exn))])
     (m-value-exp-value (m-value-exp 'return
-                                    (m-state-stmt-list (parser filename) (m-state-declare 'return '(()())))))))
+                                    (m-state-stmt-list (parser filename) (m-state-declare 'return '(()()))))))))
 
 ; takes a statement list and state, returns the state after executing all statements
 (define m-state-stmt-list
@@ -156,32 +156,3 @@
   (lambda (op exp s)
     (2tuple (op (m-value-exp-value (m-value-exp (operand1 exp) s)) (m-value-exp-value (m-value-exp (operand2 exp) s)))
                (m-value-exp-state (m-value-exp (operand2 exp) (m-value-exp-state (m-value-exp (operand1 exp) s)))))))
-
-;(eq? (interpret "test/programs/1") 150)
-;(eq? (interpret "test/programs/2") -4)
-;(eq? (interpret "test/programs/3") 10)
-;(eq? (interpret "test/programs/4") 16)
-;(eq? (interpret "test/programs/5") 220)
-;(eq? (interpret "test/programs/6") 5)
-;(eq? (interpret "test/programs/7") 6)
-;(eq? (interpret "test/programs/8") 10)
-;(eq? (interpret "test/programs/9") 5)
-;(eq? (interpret "test/programs/10") -39)
-;(interpret "test/programs/11")
-;(interpret "test/programs/12")
-;(interpret "test/programs/13")
-;(interpret "test/programs/14")
-;(eq? (interpret "test/programs/15") 'true)
-;(eq? (interpret "test/programs/16") 100)
-;(eq? (interpret "test/programs/17") 'false)
-;(eq? (interpret "test/programs/18") 'true)
-;(eq? (interpret "test/programs/19") 128)
-;(eq? (interpret "test/programs/20") 12)
-;(eq? (interpret "test/programs/21") 30)
-;(eq? (interpret "test/programs/22") 11)
-;(eq? (interpret "test/programs/23") 1106)
-(eq? (interpret "test/programs/24") 12)
-(eq? (interpret "test/programs/25") 16)
-(eq? (interpret "test/programs/26") 72)
-(eq? (interpret "test/programs/27") 21)
-(eq? (interpret "test/programs/28") 164)
