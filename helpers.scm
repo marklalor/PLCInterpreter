@@ -4,12 +4,19 @@
 (require "abstractions.scm")
 (provide (all-defined-out))
 
+(define initial-state
+  (lambda ()
+    '(()())))
+
+(define empty-statement
+  (lambda ()
+    '()))
+
 ; remove the first variable and value from the state
 (define cdrstate
   (lambda (s)
     (cons (cdr (var-list s)) (cons (cdr (value-list s)) '()))))
 
-; 
 (define int-exp?
   (lambda (exp)
     (cond
@@ -105,7 +112,6 @@
       (else
        (assigned? variable (cdrstate s))))))
 
-
 ; our wrappers for bool operations
 ; our and operator, takes two atoms of 'true or 'false
 (define myand
@@ -146,7 +152,7 @@
 
 (define add-var
   (lambda (variable value s)
-    (cons (cons variable (var-list s)) (cons (cons value (value-list s)) '()))))
+    (2tuple (cons variable (var-list s)) (cons value (value-list s)))))
 
 (define remove-var
   (lambda (variable s)

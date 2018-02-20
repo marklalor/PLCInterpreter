@@ -22,7 +22,6 @@
 
 ; statement abstractions
 
-
 (define operator car)
 
 ; variable declaration: (var variable) or (var variable value)

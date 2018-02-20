@@ -9,9 +9,12 @@
 
 ; takes filename, parses file, evaluates parse tree, returns proper value
 (define interpret 
-  (lambda (filename) (with-handlers ([exn:fail? (lambda (exn) (exn-message exn))])
-    (m-value-exp-value (m-value-exp 'return
-                                    (m-state-stmt-list (parser filename) (m-state-declare 'return '(()()))))))))
+  (lambda (filename)
+    (with-handlers ([exn:fail? (lambda (exn) (exn-message exn))]) ; return a string with the error instead of crashing interpreter
+      (m-value-exp-value
+       (m-value-exp
+        'return
+        (m-state-stmt-list (parser filename) (m-state-declare 'return (initial-state))))))))
 
 ; takes a statement list and state, returns the state after executing all statements
 (define m-state-stmt-list
@@ -29,7 +32,7 @@
       ((declaration? stmt) (m-state-declare (declaration-variable stmt) s))
       ((assignment? stmt) (m-state-assign (assignment-variable stmt) (assignment-expression stmt) s))
       ((ifthenelse? stmt) (m-state-if (if-condition stmt) (then-statement stmt) (else-statement stmt) s))
-      ((ifthen? stmt) (m-state-if (if-condition stmt) (then-statement stmt) '() s))
+      ((ifthen? stmt) (m-state-if (if-condition stmt) (then-statement stmt) (empty-statement) s))
       ((while? stmt) (m-state-while (while-condition stmt) (while-body-statement stmt) s))
       ((return? stmt) (m-state-return (return-expression stmt) s)))))
 
@@ -43,8 +46,7 @@
   (lambda (variable s)
     (cond
       ((declared? variable s) (error 'RedefiningVariable))
-      (else
-       (cons (cons variable (car s)) (cons (cons 'error (cadr s)) '()))))))
+      (else (add-var variable 'error s)))))
 
 ; assigns variable to the value of exp, updates the variable in the state, and returns the variable value
 (define m-state-assign
