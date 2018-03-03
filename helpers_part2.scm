@@ -92,12 +92,12 @@
 
 ; error checks
 (define declared?
-  (lambda (var s)
+  (lambda (var slayer)
     (cond
-      ((null? s) #f)
-      ((declared-helper? var (car-state-list s)) #t)
+      ((null? slayer) #f)
+      ((declared-helper? var (car-slayer slayer)) #t)
       (else
-       (declared? var (cdr s))))))
+       (declared? var (cdr slayer))))))
 
 ; declared in a state 
 (define declared-helper?
@@ -119,12 +119,12 @@
        (assigned-helper? variable (cdrstate s))))))
 
 (define assigned?
-  (lambda (variable s)
+  (lambda (variable slayer)
     (cond
-      ((null? s) #f)
-      ((assigned-helper? variable (car-state-list s)) #t)
+      ((null? slayer) #f)
+      ((assigned-helper? variable (car-slayer slayer)) #t)
       (else
-       (assigned? variable (cdr-state-list s))))))
+       (assigned? variable (cdr-slayer slayer))))))
 
 (define block?
   (lambda (stmt)
@@ -151,13 +151,6 @@
     (lambda (bool1 bool2)
       (op bool1 bool2))))
 
-(define atomtobool
-  (lambda (atom)
-    (cond
-      ((eq? atom 'true) #t)
-      ((eq? atom 'false) #f)
-      (else (error 'InvalidBool)))))
-
 (define noteq
  (lambda (bool1 bool2)
    (not (eq? bool1 bool2))))
@@ -168,8 +161,8 @@
     (cons (cons variable (var-list s)) (cons (cons value (value-list s)) '()))))
 
 (define add-var
-  (lambda (variable value s)
-    (cons (add-var-helper variable value (car-state-list s)) (cdr-state-list s))))
+  (lambda (variable value slayer)
+    (cons (add-var-helper variable value (car-slayer slayer)) (cdr-slayer slayer))))
 
 ; remove variable from the first state list in state 
 (define remove-var-helper
@@ -181,18 +174,18 @@
        (add-var-helper (car (var-list s)) (car (value-list s)) (remove-var-helper variable (cdrstate s)))))))
 
 (define remove-var
-  (lambda (variable s)
-    (cons (remove-var-helper variable (car-state-list s)) (cdr-state-list s))))
+  (lambda (variable slayer)
+    (cons (remove-var-helper variable (car-slayer slayer)) (cdr-slayer slayer))))
 
 
 
 ; add layer to state each time a new block is entered
 (define add-layer
-  (lambda (s)
-    (cons state-list s)))
+  (lambda (slayer)
+    (cons state slayer)))
 
 (define remove-layer
-  (lambda (s)
-    (cdr s)))
+  (lambda (slayer)
+    (cdr slayer)))
 
   

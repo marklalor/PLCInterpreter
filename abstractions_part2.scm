@@ -22,7 +22,6 @@
 
 ; statement abstractions
 
-
 (define operator car)
 
 ; variable declaration: (var variable) or (var variable value)
@@ -45,6 +44,9 @@
 (define while-condition cadr)
 (define while-body-statement caddr)
 
+; block statement 
+(define block-stmt cadr)
+
 ; Other expressions...
 
 ; +, -, *, /
@@ -62,24 +64,26 @@
 (define m-value-exp-state cadr)
 
 ; abstractions for layers in state
-(define car-state-list
+(define car-slayer
   (lambda (s)
     (car s)))
 
-(define cdr-state-list
+(define cdr-slayer
   (lambda (s)
     (cdr s)))
 
-(define outer-state
+(define outer-slayer
   (lambda (s)
     (cadr s)))
 
-(define global-state
+(define global-slayer
   (lambda (s)
     (caddr s)))
 
 (define init-state '((()())))
 
-(define state-list '(()()))
+(define state '(()()))
 
-(define block-stmt cadr)
+;(define return (lambda (v) v))
+
+(define return-stmt cadr)
