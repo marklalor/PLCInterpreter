@@ -22,6 +22,7 @@
 
 ; statement abstractions
 
+
 (define operator car)
 
 ; variable declaration: (var variable) or (var variable value)
@@ -59,3 +60,26 @@
 
 ; get the state of the tuple
 (define m-value-exp-state cadr)
+
+; abstractions for layers in state
+(define car-state-list
+  (lambda (s)
+    (car s)))
+
+(define cdr-state-list
+  (lambda (s)
+    (cdr s)))
+
+(define outer-state
+  (lambda (s)
+    (cadr s)))
+
+(define global-state
+  (lambda (s)
+    (caddr s)))
+
+(define init-state '((()())))
+
+(define state-list '(()()))
+
+(define block-stmt cadr)
