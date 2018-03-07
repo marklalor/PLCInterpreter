@@ -47,6 +47,20 @@
 ; block statement 
 (define block-stmt cadr)
 
+; try catch finally
+(define try-block cadr)
+(define catch-block caddr)
+(define finally-block
+  (lambda (stmt)
+    (cadr (cadddr stmt))))
+
+(define catch-stmt caddr)
+(define catch-exception
+  (lambda (stmt)
+    (car (cadr stmt))))
+
+(define throw-exp cadr)
+
 ; Other expressions...
 
 ; +, -, *, /
@@ -84,6 +98,10 @@
 
 (define state '(()()))
 
-;(define return (lambda (v) v))
+(define return (lambda (v) v))
 
 (define return-stmt cadr)
+
+(define break?
+  (lambda (stmt)
+    (eq? (car stmt) 'break)))

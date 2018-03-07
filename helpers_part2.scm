@@ -130,6 +130,26 @@
   (lambda (stmt)
     (eq? (car stmt) 'begin)))
 
+(define while-block?
+  (lambda (stmt)
+    (and (while? stmt) (block? (while-body-statement stmt)))))
+
+(define continue?
+  (lambda (stmt)
+    (eq? (car stmt) 'continue)))
+
+(define try-catch?
+  (lambda (stmt)
+    (and (eq? (car stmt) 'try) (null? (cdddr stmt)))))
+
+(define try-catch-finally?
+  (lambda (stmt)
+    (and (eq? (car stmt) 'try) (not (null? (cdddr stmt))))))
+
+(define throw?
+  (lambda (stmt)
+    (eq? (car stmt) 'throw)))
+
 ; our wrappers for bool operations
 ; our and operator, takes two atoms of 'true or 'false
 (define myand
