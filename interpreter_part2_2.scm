@@ -30,11 +30,11 @@
 ; takes a statement list and state, returns the state after executing all statements
 (define m-state-stmt-list
   (lambda (stmt-list s return break continue throw)
-    (if (null? stmt-list) (throw s)
+    (if (null? stmt-list) s
         (m-state-stmt-list (cdr stmt-list) (m-state (car stmt-list) s return break continue throw) return break continue throw)))) ; what if we get break outside of {}
 
 (define m-state-stmt-list-cps
-  (lambda (stmt-list s return break continue throw)
+  (lambda (stmt-list s return break continue throw throw-break)
     (cond
       ((null? stmt-list) s)
       ((throw? (car stmt-list)) (break (m-state (car stmt-list) s return break continue throw)))
@@ -230,24 +230,24 @@
 (define try-catch-finally-break
   (lambda (try-block catch-block finally-block s return break continue throw)
     (call/cc
-     (lambda (try-break)
-       (try-catch-finally try-block catch-block finally-block s return try-break continue throw)))))
+     (lambda (throw-break)
+       (try-catch-finally try-block catch-block finally-block s return break continue throw throw-break)))))
     
 (define try-catch-finally
-  (lambda (try-block catch-block finally-block s return break continue throw)
-    (m-state-stmt-list-cps try-block s return break continue
+  (lambda (try-block catch-block finally-block s return break continue throw throw-break)
+    (m-state-stmt-list try-block s return break continue
                        (lambda (try-return)
                          (cond
                            ((and (list? try-return) (not (null? finally-block))) ; finally block exist 
-                            (m-state-stmt-list-cps finally-block try-return return break continue
+                            (m-state-stmt-list finally-block try-return return break continue
                                                (lambda (finally-return) (throw finally-return))))
                            ((and (list? try-return) (null? finally-block)) (throw try-return))
                            (else
-                            (m-state-stmt-list-cps (catch-stmt catch-block) (m-state-assign (catch-exception catch-block) try-return (m-state-declare (catch-exception catch-block) s return break continue throw) return break continue throw) return break continue
+                            (m-state-stmt-list (catch-stmt catch-block) (m-state-assign (catch-exception catch-block) try-return (m-state-declare (catch-exception catch-block) s return break continue throw) return break continue throw) return break continue
                                                (lambda (catch-return)
                                                  (cond
-                                                   (m-state-stmt-list-cps finally-block catch-return return break continue
-                                                                    (lambda (finally-return) (throw finally-return))))))))))))
+                                                   (m-state-stmt-list finally-block catch-return return break continue
+                                                                    (lambda (finally-return) (throw-break finally-return))))))))))))
 
 ;(define try-catch-finally-cps
 ;  (lambda (try-block catch-block finally-block s return break continue throw)
@@ -277,8 +277,8 @@
 (try-catch-finally-break t c '() '(((x)(10))) (lambda (v) v) errorbreak errorcontinue (lambda (v) v))
 ;(interpret "test/part2/10")
 ;(interpret "test/part2/9")
-;(interpret "test/part2/1")
-;(interpret "test/part2/2")
+(interpret "test/part2/1")
+(interpret "test/part2/2")
 ;(interpret "test/part2/3")
 ;(interpret "test/part2/4")
 ;(interpret "test/part2/6")
