@@ -88,7 +88,13 @@
 
 (define unary?
   (lambda (exp)
-    (null? (cddr exp)))) 
+    (null? (cddr exp))))
+
+(define declared-in-current-layer?
+  (lambda (var slayer)
+    (if (null? slayer)
+        #f
+        (declared-helper? var (car-slayer slayer)))))
 
 ; error checks
 (define declared?
@@ -140,11 +146,11 @@
 
 (define try-catch?
   (lambda (stmt)
-    (and (eq? (car stmt) 'try) (null? (cdddr stmt)))))
+    (and (eq? (car stmt) 'try) (null? (car (cdddr stmt))))))
 
 (define try-catch-finally?
   (lambda (stmt)
-    (and (eq? (car stmt) 'try) (not (null? (cdddr stmt))))))
+    (and (eq? (car stmt) 'try) (not (null? (car (cdddr stmt)))))))
 
 (define throw?
   (lambda (stmt)
@@ -195,9 +201,10 @@
 
 (define remove-var
   (lambda (variable slayer)
-    (cons (remove-var-helper variable (car-slayer slayer)) (cdr-slayer slayer))))
-
-
+    (cond
+      ((null? slayer) slayer)
+      (else 
+       (cons (remove-var-helper variable (car-slayer slayer)) (cdr-slayer slayer))))))
 
 ; add layer to state each time a new block is entered
 (define add-layer
