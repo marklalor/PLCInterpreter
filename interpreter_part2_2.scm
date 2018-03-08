@@ -84,7 +84,7 @@
 (define m-state-assign
   (lambda (variable exp s return break continue  throw)
     (cond
-      ((not (declared? variable (m-state exp s return break continue  throw))) (error 'UndeclaredVariable))
+      ((not (declared? variable (m-state exp s return break continue throw))) (error 'UndeclaredVariable))
       (else
        (removeadd variable (m-value-exp exp s return break continue  throw) s)))))
        ;(add-var variable (m-value-exp exp s) (remove-var variable (m-state exp s)))))))
@@ -248,7 +248,7 @@
   (lambda (try-block catch-block finally-block s return break continue throw)
     (remove-layer (m-state-stmt-list finally-block
                        (add-layer (m-state-catch-block catch-block
-                                                          (m-state-try-block try-block  s return break continue)
+                                                          (m-state-try-block try-block s return break continue)
                                                           return break continue))
                        return break continue throw))))
 
@@ -261,16 +261,18 @@
        (m-state-stmt-list-throw try-block (add-layer state) return break continue catch-break)))))
 
 (define m-state-catch-block
-  (lambda (catch-block stateNvalue return break continue )
-    (call/cc
-     (lambda (finally-break)
-       (cond
-         ((null? (car stateNvalue))
-          (finally-break (remove-layer (cadr stateNvalue)))) ; must remove layer from try block
-         (else
-          (finally-break (m-state-stmt-list-throw (catch-stmt catch-block) (m-state-assign (catch-exception catch-block) (car stateNvalue)
-                                                                            (m-state-declare (catch-exception catch-block) (add-layer (remove-layer (cadr stateNvalue))) return break continue finally-break)
-                                                                            return break continue finally-break) return break continue finally-break))))))))
+  (lambda (catch-block stateNvalue return break continue)
+    (remove-layer
+     (cadr
+      (call/cc
+       (lambda (finally-break)
+         (cond
+           ((null? (car stateNvalue))
+            (finally-break stateNvalue)) ; must remove layer from try block
+           (else
+            (finally-break (m-state-stmt-list-throw (catch-stmt catch-block) (m-state-assign (catch-exception catch-block) (car stateNvalue)
+                                                                                             (m-state-declare (catch-exception catch-block) (add-layer (remove-layer (cadr stateNvalue))) return break continue finally-break)
+                                                                                             return break continue finally-break) return break continue finally-break))))))))))
     
 
 ;(define try-catch-finally-cps
