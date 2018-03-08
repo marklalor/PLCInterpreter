@@ -86,23 +86,25 @@
 
 (define removeadd
   (lambda (variable value s-layer)
-    (cond
-      ((null? (cdr-slayer s-layer))
-       (cons (removeaddhelper variable value (car-slayer s-layer)) '()))
-      (else
-       (cons (removeaddhelper variable value (car-slayer s-layer))
-             (removeadd variable value (cdr-slayer s-layer)))))))
-
-(define removeaddhelper
-  (lambda (variable value s)
     (call/cc
      (lambda (break)
        (cond
-         ((null? (var-list s)) s)
-         ((eq? (car (var-list s)) variable)
-          (break (list (var-list s) (cons value (cdr (value-list s))))))
+         ((null? (cdr-slayer s-layer))
+          (cons (removeaddhelper variable value (car-slayer s-layer) (cdr-slayer s-layer) break) '()))
          (else
-          (add-var-helper (car (var-list s)) (car (value-list s)) (removeaddhelper variable value (cdrstate s)))))))))
+          (cons (removeaddhelper variable value (car-slayer s-layer) (cdr-slayer s-layer) break)
+                (removeadd variable value (cdr-slayer s-layer)))))))))
+
+(define removeaddhelper
+  (lambda (variable value s cdr-slayer break)
+       (cond
+         ((null? (var-list s)) s)
+         ((and (eq? (car (var-list s)) variable) (not (null? cdr-slayer)))
+          (break (list (list (var-list s) (cons value (cdr (value-list s)))) cdr-slayer)))
+         ((eq? (car (var-list s)) variable)
+          (break (cons (list (var-list s) (cons value (cdr (value-list s)) )) '())))
+         (else
+          (add-var-helper (car (var-list s)) (car (value-list s)) (removeaddhelper variable value (cdrstate s)))))))
 
 ; takes condition, then, else statements and state, returns a new state
 (define m-state-if
