@@ -12,7 +12,7 @@
   (lambda (filename)
     (call/cc
      (lambda (return)
-          (m-state-stmt-list (parser filename) init-state return errorbreak errorcontinue errorthrow errorthrow)))))
+          (m-state-stmt-list (parser filename) init-state return errorbreak errorcontinue errorthrow (lambda (v) v))))))
     ;(m-value-exp 'return (m-state-stmt-list (parser filename) (m-state-declare 'return init-state)))))
 
 (define errorbreak
@@ -35,7 +35,7 @@
 
 (define m-state-stmt-list-throw
   (lambda (stmt-list s return break continue throw-break throw)
-    (if (null? stmt-list) (throw s)
+    (if (null? stmt-list) (throw '() s)
         (m-state-stmt-list-throw (cdr stmt-list) (m-state (car stmt-list) s return break continue throw-break throw) return break continue throw-break throw)))) 
 
 ; takes a statement and state layer, returns a new state after executing stmt
@@ -44,14 +44,14 @@
     (cond
       ((null? stmt) s)
       ((not (list? stmt)) s)
-      ((try-catch? stmt) (try-catch-finally (try-block stmt) (catch-block stmt) '() s return break continue (lambda (v) v)))
-      ((try-catch-finally? stmt) (try-catch-finally (try-block stmt) (catch-block stmt) (finally-block stmt) s return break continue (lambda (v) v)))
+      ((try-catch? stmt) (try-catch-finally (try-block stmt) (catch-block stmt) '() s return break continue (lambda (value state) value state)))
+      ((try-catch-finally? stmt) (try-catch-finally (try-block stmt) (catch-block stmt) (finally-block stmt) s return break continue (lambda (value state) value state)))
       ((while-block? stmt) (remove-layer (m-state-while (while-condition stmt) (while-body-statement stmt) (add-layer s) return throw-break throw)))
       ((block? stmt) (remove-layer (m-state-stmt-list (cdr stmt) (add-layer s) return break continue throw-break throw)))
       ((return? stmt) (return (m-value-exp (return-stmt stmt) s return break continue throw-break throw)))
       ((break? stmt) (break s))
       ((continue? stmt) (continue s))
-      ((throw? stmt) (throw (throw-exp stmt)))
+      ((throw? stmt) (throw (throw-exp stmt) s))
       ((declarationandassignment? stmt)
        (m-state-assign (assignment-variable stmt) (assignment-expression stmt) (m-state-declare (declaration-variable stmt) s return break continue throw-break throw) return break continue throw-break throw))
       ((declaration? stmt) (m-state-declare (declaration-variable stmt) s return break continue throw-break throw))
@@ -130,19 +130,19 @@
     (cond
          ((m-value-exp while-cond s return break continue throw-break throw)
           (m-state-while-loop while-cond loop-body
-                              (m-state-while-continue while-cond loop-body s return break throw-break throw) return break continue throw-break throw))
+                              (m-state-with-continue loop-body (m-state while-cond s return break continue throw-break throw) return break throw-break throw) return break continue throw-break throw))
                               ;(m-state loop-body) (m-state while-cond s return break continue)))
          (else
           (m-state while-cond s return break continue throw-break throw)))))
 
-(define m-state-while-continue
-  (lambda (while-cond loop-body s return break throw-break throw)
+(define m-state-with-continue
+  (lambda (loop-body s return break throw-break throw)
     (call/cc
      (lambda (continue)
        (cond
-         ((block? loop-body) (m-state-stmt-list (cdr loop-body) (m-state while-cond s return break continue throw-break throw) return break continue throw-break throw))
+         ((block? loop-body) (m-state-stmt-list (cdr loop-body) s return break continue throw-break throw))
          (else
-          (m-state loop-body (m-state while-cond s return break continue) return break continue throw-break throw)))))))
+          (m-state loop-body s return break continue throw-break throw)))))))
 
 ; takes an expression and state
 ; returns a tuple of the value of the expression and a possibly new state 
@@ -227,18 +227,21 @@
 (define try-catch-finally-break
   (lambda (try-block catch-block finally-block s return break continue throw-break throw)
     (m-state-stmt-list-throw try-block s return break continue throw-break
-                       (lambda (try-return)
+                       (lambda (value state)
                          (cond
-                           ((and (list? try-return) (not (null? finally-block))) ; finally block exist 
-                            ((m-state-stmt-list-throw finally-block try-return return break continue throw-break
-                                               (lambda (finally-return) (throw-break finally-return)))))
-                           ((and (list? try-return) (null? finally-block)) (throw-break try-return))
+                           ((null? value) ; finally block exist 
+                            (remove-layer (m-state-stmt-list finally-block (add-layer state) return break continue throw-break throw)))                                
                            (else
-                            (m-state-stmt-list-throw (catch-stmt catch-block) (m-state-assign (catch-exception catch-block) try-return (m-state-declare (catch-exception catch-block) s return break continue throw-break throw) return break continue throw-break throw) return break continue throw-break
-                                               (lambda (catch-return)
-                                                 (cond
-                                                   (m-state-stmt-list-throw finally-block catch-return return break continue throw-break
-                                                                    (lambda (finally-return) (throw-break finally-return))))))))))))
+                            (remove-layer (m-state-stmt-list-throw (catch-stmt catch-block)
+                                                     (m-state-assign (catch-exception catch-block) value
+                                                                     (m-state-declare (catch-exception catch-block) (add-layer s) return break continue throw-break throw)
+                                                                     return break continue throw-break throw)
+                                                     return break continue throw-break
+                                                     (lambda (value2 state2)
+                                                       (cond
+                                                         ((not (null? value2)) (throw value2 state2))
+                                                         (else
+                                                          (remove-layer (m-state-stmt-list finally-block (add-layer state) return break continue throw-break throw)))))))))))))
 
 ;(define try-catch-finally-cps
 ;  (lambda (try-block catch-block finally-block s return break continue throw)
