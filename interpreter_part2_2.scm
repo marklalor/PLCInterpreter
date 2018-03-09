@@ -41,8 +41,9 @@
       ((not (list? stmt)) s)
       ((try-catch? stmt) (try-catch-finally-cc (try-block stmt) (catch-block stmt) '() s return break continue (lambda (value state) value state)))
       ((try-catch-finally? stmt) (try-catch-finally-cc (try-block stmt) (catch-block stmt) (finally-block stmt) s return break continue throw))
-      ((while-block? stmt) (remove-layer (m-state-while (while-condition stmt) (while-body-statement stmt) (add-layer s) return  throw)))
-      ((block? stmt) (remove-layer (m-state-stmt-list (cdr stmt) (add-layer s) return break continue  throw)))
+      ;((while-block? stmt) (m-state-while (while-condition stmt) (while-body-statement stmt)  s) return throw)))
+      ((block? stmt) (m-state-block (cdr stmt) s return break continue  throw))
+      ;((block? stmt) (remove-layer (m-state-stmt-list (cdr stmt) (add-layer s) return break continue  throw)))
       ((return? stmt) (return (m-value-exp (return-stmt stmt) s return break continue  throw)))
       ((break? stmt) (break s))
       ((continue? stmt) (continue s))
@@ -60,6 +61,14 @@
       ((int-exp? stmt) (m-state (operand2 stmt) (m-state (operand1 stmt) s return break continue  throw) return break continue  throw))
       (else
        s))))
+ 
+(define m-state-block
+  (lambda (stmt-list s return break continue throw)
+    (remove-layer
+     (call/cc
+      (lambda (block)
+        (m-state-stmt-list stmt-list (add-layer s) return break continue block))))))
+
 
 ; takes a stmt and a state, assigns 'return variable to the variable/value in the stmt
 (define m-state-return
@@ -84,27 +93,57 @@
        (removeadd variable (m-value-exp exp s return break continue  throw) s)))))
        ;(add-var variable (m-value-exp exp s) (remove-var variable (m-state exp s)))))))
 
-(define removeadd
-  (lambda (variable value s-layer)
-    (call/cc
-     (lambda (break)
-       (cond
-         ((null? (cdr-slayer s-layer))
-          (cons (removeaddhelper variable value (car-slayer s-layer) (cdr-slayer s-layer) break) '()))
-         (else
-          (cons (removeaddhelper variable value (car-slayer s-layer) (cdr-slayer s-layer) break)
-                (removeadd variable value (cdr-slayer s-layer)))))))))
+; check to see if variable is in the state
+; if it is in the state, break with (removeadd variable s s-layer)
 
-(define removeaddhelper
-  (lambda (variable value s cdr-slayer break)
-       (cond
-         ((null? (var-list s)) s)
-         ((and (eq? (car (var-list s)) variable) (not (null? cdr-slayer)))
-          (break (list (list (var-list s) (cons value (cdr (value-list s)))) cdr-slayer)))
-         ((eq? (car (var-list s)) variable)
-          (break (cons (list (var-list s) (cons value (cdr (value-list s)) )) '())))
-         (else
-          (add-var-helper (car (var-list s)) (car (value-list s)) (removeaddhelper variable value (cdrstate s)))))))
+(define inlayer?
+  (lambda (variable s)
+    (cond
+      ((null? s) #f)
+      ((null? (var-list s)) #f)
+      ((eq? (car (var-list s)) variable) #t)
+      (else
+       (inlayer? variable (cdrstate s))))))
+
+       
+(define removeadd 
+  (lambda (variable value s-layer)
+    (cond
+      ((null? s-layer) s-layer)
+      ((inlayer? variable (car-slayer s-layer))
+       (cons (removeaddlayer variable value (car-slayer s-layer)) (cdr-slayer s-layer))) ; remove and add variable in this layer, returns a layer
+      (else
+       (cons (car-slayer s-layer) (removeadd variable value (cdr-slayer s-layer)))))))
+
+;(define removeadd
+;  (lambda (variable value s-layer)
+;    (call/cc
+;     (lambda (break)
+;       (cond
+;         ((null? (cdr-slayer s-layer))
+;          (cons (removeaddhelper variable value (car-slayer s-layer) (cdr-slayer s-layer) break) '()))
+ ;        (else
+;          (cons (removeaddhelper variable value (car-slayer s-layer) (cdr-slayer s-layer) break)
+;                (removeadd variable value (cdr-slayer s-layer)))))))))
+
+
+(define removeaddlayer
+  (lambda (variable value layer)
+    (cond
+      ((null? layer) layer)
+      ((eq? (car (var-list layer)) variable)
+       (list (var-list layer) (cons value (cdr (value-list layer)))))
+      (else
+       (add-var-helper (car (var-list layer)) (car (value-list layer)) (removeaddlayer variable value (cdrstate layer)))))))
+
+;(define removeaddhelper-break
+;  (lambda (variable value s breakstate)
+;       (cond
+;         ((null? (var-list s)) s)
+;         ((eq? (car (var-list s)) variable)
+;          (break (list (var-list s) (cons value (cdr (value-list s))))))
+;         (else
+;          (add-var-helper (car (var-list s)) (car (value-list s)) (removeaddhelper-break variable value (cdrstate s) breakstate))))))
 
 ; takes condition, then, else statements and state, returns a new state
 (define m-state-if
@@ -136,7 +175,7 @@
     (call/cc
      (lambda (continue)
        (cond
-         ((block? loop-body) (m-state-stmt-list (cdr loop-body) s return break continue throw))
+         ((block? loop-body) (m-state-stmt-list loop-body s return break continue throw))
          (else
           (m-state loop-body s return break continue  throw)))))))
 
@@ -214,19 +253,29 @@
   (lambda (op exp s return break continue  throw)
     (op (m-value-exp (operand1 exp) s return break continue  throw) (m-value-exp (operand2 exp) (m-state (operand1 exp) s return break continue  throw) return break continue  throw))))
 
+
 (define try-catch-finally-cc
   (lambda (try-block catch-block finally-block s return break continue throw)
-    (remove-layer (m-state-stmt-list finally-block
-                       (add-layer (remove-var 'throw (m-state-catch-block catch-block
+    (m-state-block finally-block
+                       (remove-var 'throw (m-state-catch-block catch-block
                                                           (m-state-try-block try-block (m-state-declare 'throw s return break continue throw) return break continue)
-                                                          return break continue)))
-                       return break continue throw))))
+                                                          return break continue))
+                       return break continue throw)))
+
+;(define try-catch-finally-cc
+;  (lambda (try-block catch-block finally-block s return break continue throw)
+;    (remove-layer (m-state-stmt-list finally-block
+;                       (add-layer (remove-var 'throw (m-state-catch-block catch-block
+;                                                          (m-state-try-block try-block (m-state-declare 'throw s return break continue throw) return break continue)
+;                                                          return break continue)))
+;                       return break continue throw))))
 
 (define m-state-try-block
   (lambda (try-block state return break continue)
     (remove-layer
      (call/cc
       (lambda (catch-break)
+        ;(m-state-block try-block state return break continue catch-break)))))
         (m-state-stmt-list try-block (add-layer state) return break continue catch-break))))))
 
 (define m-state-catch-block
@@ -248,7 +297,7 @@
                                                                                return break continue finally-break)
                                                               return break continue finally-break)
                                               return break continue finally-break)))))))))
-   
+ 
 (eq? 2000400 (interpret "test/part2/17"))
 (eq? 20 (interpret "test/part2/1"))
 (eq? 164 (interpret "test/part2/2"))
@@ -266,6 +315,6 @@
 (eq? 12 (interpret "test/part2/14"))
 (eq? 125 (interpret "test/part2/15"))
 (eq? 110 (interpret "test/part2/16"))
-(eq? 2000400 (interpret "test/part2/17"))
+;(eq? 2000400 (interpret "test/part2/17"))
 (eq? 101 (interpret "test/part2/18"))
 ;(eq? 'error (interpret "test/part2/19"))
