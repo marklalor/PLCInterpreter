@@ -40,6 +40,7 @@
       ((null? stmt) s)
       ((not (list? stmt)) s)
       ((try-catch? stmt) (try-catch-finally-cc (try-block stmt) (catch-block stmt) '() s return break continue throw))
+      ((try-finally? stmt) (try-catch-finally-cc (try-block stmt) '(catch (e) ()) (finally-block stmt) s return break continue throw))
       ((try-catch-finally? stmt) (try-catch-finally-cc (try-block stmt) (catch-block stmt) (finally-block stmt) s return break continue throw))
       ((block? stmt) (m-state-block (cdr stmt) s return break continue throw))
       ((return? stmt) (return (m-value-exp (return-stmt stmt) s return break continue  throw)))
@@ -289,60 +290,3 @@
                                                              
                                                              return break continue throw))))
     return break continue throw)))
-
-;(define try-catch-finally-cc
-;  (lambda (try-block catch-block finally-block s return break continue throw)
-;    (remove-layer (m-state-stmt-list finally-block
-;                       (add-layer (remove-var 'throw (m-state-catch-block catch-block
-;                                                          (m-state-try-block try-block (m-state-declare 'throw s return break continue throw) return break continue)
-;                                                          return break continue)))
-;                       return break continue throw))))
-
-;(define m-state-try-block
-;  (lambda (try-block state return break continue)
-;    (remove-layer
-;     (call/cc
-;      (lambda (catch-break)
-        ;(m-state-block try-block state return break continue catch-break)))))
-;        (m-state-stmt-list try-block (add-layer state) return break continue catch-break))))))
-
-;(define m-state-catch-block
-;  (lambda (catch-block state return break continue)
-;    (remove-layer
-;      (call/cc
-;       (lambda (finally-break)
-;         (cond
-;           ((not (assigned? 'throw state)) ; If throw wasn't assigned, that means we never threw
-;            (finally-break (add-layer state)))
-;           (else
-;            (finally-break (m-state-stmt-list (catch-stmt catch-block)
-;                                              (m-state-assign (catch-exception catch-block)
-;                                                              (m-value-variable 'throw
-;                                                                                state
-;                                                                                return break continue finally-break)
-;                                                              (m-state-declare (catch-exception catch-block)
-;                                                                               (add-layer state)
-;                                                                               return break continue finally-break)
- ;                                                             return break continue finally-break)
- ;                                             return break continue finally-break)))))))))
- 
-(eq? 2000400 (interpret "test/part2/17"))
-(eq? 20 (interpret "test/part2/1"))
-(eq? 164 (interpret "test/part2/2"))
-(eq? 32 (interpret "test/part2/3"))
-(eq? 2 (interpret "test/part2/4"))
-;(eq? 'error (interpret "test/part2/5"))
-(eq? 25 (interpret "test/part2/6"))
-(eq? 21 (interpret "test/part2/7"))
-(eq? 6 (interpret "test/part2/8"))
-(eq? -1 (interpret "test/part2/9"))
-(eq? 789 (interpret "test/part2/10"))
-;(eq? 'error (interpret "test/part2/11"))
-;(eq? 'error (interpret "test/part2/12"))
-;(eq? 'error (interpret "test/part2/13"))
-(eq? 12 (interpret "test/part2/14"))
-(eq? 125 (interpret "test/part2/15"))
-(eq? 110 (interpret "test/part2/16"))
-(eq? 2000400 (interpret "test/part2/17"))
-(eq? 101 (interpret "test/part2/18"))
-;(eq? 'error (interpret "test/part2/19"))

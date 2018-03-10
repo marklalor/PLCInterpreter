@@ -146,11 +146,25 @@
 
 (define try-catch?
   (lambda (stmt)
-    (and (eq? (car stmt) 'try) (null? (car (cdddr stmt))))))
+    (and (eq? (car stmt) 'try)
+         (not (null? (caddr stmt)))
+         (eq? (caaddr stmt) 'catch)
+         (null? (cadddr stmt)))))
+
+(define try-finally?
+  (lambda (stmt)
+    (and (eq? (car stmt) 'try)
+         (null? (caddr stmt))
+         (not (null? (cadddr stmt)))
+         (eq? (car (cadddr stmt)) 'finally))))
 
 (define try-catch-finally?
   (lambda (stmt)
-    (and (eq? (car stmt) 'try) (not (null? (car (cdddr stmt)))))))
+    (and (eq? (car stmt) 'try)
+         (not (null? (caddr stmt)))
+         (eq? (caaddr stmt) 'catch)
+         (not (null? (cadddr stmt)))
+         (eq? (car (cadddr stmt)) 'finally))))
 
 (define throw?
   (lambda (stmt)
