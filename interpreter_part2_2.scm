@@ -39,35 +39,44 @@
     (cond
       ((null? stmt) s)
       ((not (list? stmt)) s)
-      ((try-catch? stmt) (try-catch-finally-cc (try-block stmt) (catch-block stmt) '() s return break continue (lambda (value state) value state)))
+      ((try-catch? stmt) (try-catch-finally-cc (try-block stmt) (catch-block stmt) '() s return break continue throw))
       ((try-catch-finally? stmt) (try-catch-finally-cc (try-block stmt) (catch-block stmt) (finally-block stmt) s return break continue throw))
-      ;((while-block? stmt) (m-state-while (while-condition stmt) (while-body-statement stmt)  s) return throw)))
-      ((block? stmt) (m-state-block (cdr stmt) s return break continue  throw))
-      ;((block? stmt) (remove-layer (m-state-stmt-list (cdr stmt) (add-layer s) return break continue  throw)))
+      ((block? stmt) (m-state-block (cdr stmt) s return break continue throw))
       ((return? stmt) (return (m-value-exp (return-stmt stmt) s return break continue  throw)))
       ((break? stmt) (break s))
       ((continue? stmt) (continue s))
       ((throw? stmt) (throw (m-state-assign 'throw (throw-exp stmt) s return break continue throw))) ; Assign throw the value of the value thrown
       ((declarationandassignment? stmt)
-       (m-state-assign (assignment-variable stmt) (assignment-expression stmt) (m-state-declare (declaration-variable stmt) s return break continue  throw) return break continue  throw))
-      ((declaration? stmt) (m-state-declare (declaration-variable stmt) s return break continue  throw))
-      ((assignment? stmt) (m-state-assign (assignment-variable stmt) (assignment-expression stmt) s return break continue  throw))
-      ((ifthenelse? stmt) (m-state-if (if-condition stmt) (then-statement stmt) (else-statement stmt) s return break continue  throw))
+       (m-state-assign (assignment-variable stmt) (assignment-expression stmt) (m-state-declare (declaration-variable stmt) s return break continue throw) return break continue  throw))
+      ((declaration? stmt) (m-state-declare (declaration-variable stmt) s return break continue throw))
+      ((assignment? stmt) (m-state-assign (assignment-variable stmt) (assignment-expression stmt) s return break continue throw))
+      ((ifthenelse? stmt) (m-state-if (if-condition stmt) (then-statement stmt) (else-statement stmt) s return break continue throw))
       ((ifthen? stmt) (m-state-if (if-condition stmt) (then-statement stmt) '() s return break continue  throw))
       ((while? stmt) (m-state-while (while-condition stmt) (while-body-statement stmt) s return  throw))
-      ;((return? stmt) (m-state-return (return-expression stmt) s))
       ((unary? stmt) (m-state (operand1 stmt) s return break continue  throw))
-      ((bool-exp? stmt) (m-state (operand2 stmt) (m-state (operand1 stmt) s return break continue  throw) return break continue  throw))
-      ((int-exp? stmt) (m-state (operand2 stmt) (m-state (operand1 stmt) s return break continue  throw) return break continue  throw))
-      (else
-       s))))
+      ((bool-exp? stmt) (m-state (operand2 stmt) (m-state (operand1 stmt) s return break continue  throw) return break continue throw))
+      ((int-exp? stmt) (m-state (operand2 stmt) (m-state (operand1 stmt) s return break continue  throw) return break continue throw))
+      (else s))))
+
  
 (define m-state-block
   (lambda (stmt-list s return break continue throw)
     (remove-layer
      (call/cc
-      (lambda (block)
-        (m-state-stmt-list stmt-list (add-layer s) return break continue block))))))
+      (lambda (safebreak)
+        (break
+         (remove-layer
+          (call/cc
+           (lambda (break2)
+             (continue
+              (remove-layer
+               (call/cc
+                (lambda (continue2)
+                  (throw
+                   (remove-layer
+                    (call/cc
+                     (lambda (throw2)
+                       (safebreak (m-state-stmt-list stmt-list (add-layer s) return break2 continue2 throw2)))))))))))))))))))
 
 
 ; takes a stmt and a state, assigns 'return variable to the variable/value in the stmt
@@ -77,7 +86,7 @@
 
 ; takes a variable and a state, adds variable to state
 (define m-state-declare
-  (lambda (variable s return break continue  throw)
+  (lambda (variable s return break continue throw)
     (cond
       ((declared-in-current-layer? variable s) (error 'RedefiningVariable))
       (else
@@ -145,6 +154,7 @@
 ;         (else
 ;          (add-var-helper (car (var-list s)) (car (value-list s)) (removeaddhelper-break variable value (cdrstate s) breakstate))))))
 
+
 ; takes condition, then, else statements and state, returns a new state
 (define m-state-if
   (lambda (if-cond then-stmt else-stmt s return break continue  throw)
@@ -158,7 +168,7 @@
   (lambda (while-cond loop-body s return throw)
     (call/cc
      (lambda (break)
-        (m-state-while-loop while-cond loop-body s return break break throw))))) ; need to remove top layer if we breaked inside {}
+        (m-state-while-loop while-cond loop-body s return break break throw))))) 
 
 ; loop body can contain block stmt
 (define m-state-while-loop
@@ -175,7 +185,7 @@
     (call/cc
      (lambda (continue)
        (cond
-         ((block? loop-body) (m-state-stmt-list loop-body s return break continue throw))
+         ((block? loop-body) (m-state-block loop-body s return break continue throw))
          (else
           (m-state loop-body s return break continue  throw)))))))
 
@@ -257,10 +267,28 @@
 (define try-catch-finally-cc
   (lambda (try-block catch-block finally-block s return break continue throw)
     (m-state-block finally-block
-                       (remove-var 'throw (m-state-catch-block catch-block
-                                                          (m-state-try-block try-block (m-state-declare 'throw s return break continue throw) return break continue)
-                                                          return break continue))
-                       return break continue throw)))
+                   (call/cc
+                    (lambda (nothrow)
+                      (remove-var (catch-exception catch-block)
+                                  (m-state-block (catch-stmt catch-block) ; TODO: abstract
+                                                 (remove-var 'throw
+                                                             ((lambda (state)
+                                                                (m-state-assign (catch-exception catch-block)
+                                                                                (m-value-variable 'throw
+                                                                                                  state
+                                                                                                  return break continue throw)
+                                                                                state
+                                                                                return break continue throw))
+                                                              (m-state-declare (catch-exception catch-block) ;This makes the variable e in the outermost layer. Should be a layer in
+                                                                               (call/cc
+                                                                                (lambda (throw2)
+                                                                                  (nothrow (m-state-block try-block
+                                                                                                          (m-state-declare 'throw s return break continue throw2)
+                                                                                                          return break continue throw2))))
+                                                                               return break continue throw)))
+                                                             
+                                                             return break continue throw))))
+    return break continue throw)))
 
 ;(define try-catch-finally-cc
 ;  (lambda (try-block catch-block finally-block s return break continue throw)
@@ -270,33 +298,33 @@
 ;                                                          return break continue)))
 ;                       return break continue throw))))
 
-(define m-state-try-block
-  (lambda (try-block state return break continue)
-    (remove-layer
-     (call/cc
-      (lambda (catch-break)
+;(define m-state-try-block
+;  (lambda (try-block state return break continue)
+;    (remove-layer
+;     (call/cc
+;      (lambda (catch-break)
         ;(m-state-block try-block state return break continue catch-break)))))
-        (m-state-stmt-list try-block (add-layer state) return break continue catch-break))))))
+;        (m-state-stmt-list try-block (add-layer state) return break continue catch-break))))))
 
-(define m-state-catch-block
-  (lambda (catch-block state return break continue)
-    (remove-layer
-      (call/cc
-       (lambda (finally-break)
-         (cond
-           ((not (assigned? 'throw state)) ; If throw wasn't assigned, that means we never threw
-            (finally-break (add-layer state)))
-           (else
-            (finally-break (m-state-stmt-list (catch-stmt catch-block)
-                                              (m-state-assign (catch-exception catch-block)
-                                                              (m-value-variable 'throw
-                                                                                state
-                                                                                return break continue finally-break)
-                                                              (m-state-declare (catch-exception catch-block)
-                                                                               (add-layer state)
-                                                                               return break continue finally-break)
-                                                              return break continue finally-break)
-                                              return break continue finally-break)))))))))
+;(define m-state-catch-block
+;  (lambda (catch-block state return break continue)
+;    (remove-layer
+;      (call/cc
+;       (lambda (finally-break)
+;         (cond
+;           ((not (assigned? 'throw state)) ; If throw wasn't assigned, that means we never threw
+;            (finally-break (add-layer state)))
+;           (else
+;            (finally-break (m-state-stmt-list (catch-stmt catch-block)
+;                                              (m-state-assign (catch-exception catch-block)
+;                                                              (m-value-variable 'throw
+;                                                                                state
+;                                                                                return break continue finally-break)
+;                                                              (m-state-declare (catch-exception catch-block)
+;                                                                               (add-layer state)
+;                                                                               return break continue finally-break)
+ ;                                                             return break continue finally-break)
+ ;                                             return break continue finally-break)))))))))
  
 (eq? 2000400 (interpret "test/part2/17"))
 (eq? 20 (interpret "test/part2/1"))
@@ -315,6 +343,6 @@
 (eq? 12 (interpret "test/part2/14"))
 (eq? 125 (interpret "test/part2/15"))
 (eq? 110 (interpret "test/part2/16"))
-;(eq? 2000400 (interpret "test/part2/17"))
+(eq? 2000400 (interpret "test/part2/17"))
 (eq? 101 (interpret "test/part2/18"))
 ;(eq? 'error (interpret "test/part2/19"))
