@@ -42,14 +42,18 @@
       ((null? stmt) s)
       ((not (list? stmt)) s)
       ((main-function? stmt) (add-function-binding stmt s main-func-env))
-      ((function? stmt)  (add-function-binding stmt s get-func-env)); (m-state-function stmt s))
-      ((function-call? stmt) s)
-      ;((function-call? stmt) (m-state-function (func-name stmt) (actual-params stmt) s return break continue throw))
+      ((function? stmt)  (add-function-binding stmt s get-func-env))
+      ;((function-call? stmt) s)
+      ((function-call? stmt) (merge-state (m-state-function (func-name stmt) (actual-params stmt) s return break continue throw) s)) ; update s with state returned by m-state-function
       ((try-catch? stmt) (try-catch-finally-cc (try-block stmt) (catch-block stmt) '() s return break continue throw))
       ((try-finally? stmt) (try-catch-finally-cc (try-block stmt) '(catch (e) ()) (finally-block stmt) s return break continue throw))
       ((try-catch-finally? stmt) (try-catch-finally-cc (try-block stmt) (catch-block stmt) (finally-block stmt) s return break continue throw))
       ((block? stmt) (m-state-block (cdr stmt) s return break continue throw))
-      ((return? stmt) (return (m-value-exp (return-stmt stmt) s return break continue  throw)))
+      ((return? stmt) (return (m-state-assign 'return
+                                              (m-value-exp (return-stmt stmt) s return break continue throw)
+                                              (m-state-declare 'return
+                                                               s return break continue throw)
+                                              return break continue throw)))
       ((break? stmt) (break s))
       ((continue? stmt) (continue s))
       ((throw? stmt) (throw (m-state-assign 'throw (throw-exp stmt) s return break continue throw))) ; Assign throw the value of the value thrown
@@ -68,6 +72,25 @@
 ;;;;;;;::::
 ; PART THREE
 ;;;;;;;;;;;;
+
+(define merge-state
+  (lambda (prev-s func-s)
+    (append (remove-global-state func-s) (get-global-state prev-s))))
+
+(define get-global-state
+  (lambda (s)
+    (cond
+      ((null? (cdr s)) s)
+      (else
+       (get-global-state (cdr s))))))
+
+(define remove-global-state
+  (lambda (s)
+    (cond
+      ((null? (cdr s)) '())
+      (else
+       (cons (car s) (remove-global-state (cdr s)))))))
+
 ; function that returns the binding in scope
 (define get-func-env
   (lambda (s)
@@ -92,26 +115,32 @@
 
 ; add nested functions to the state
 (define m-state-function
-  (lambda (function s return break continue  throw)
-    (cond
-      ((null? (cdr s)) s) ; not nested function
-      (else
-       (add-function-binding function (add-layer s) main-func-env)))))
+  (lambda (func-name actual-params s return break continue throw)
+    (call/cc
+     (lambda (return)
+       (m-state-stmt-list (func-body (m-value-variable func-name s errorbreak errorbreak errorcontinue errorthrow))
+                          (add-parameters (formal-params (m-value-variable func-name s errorbreak errorbreak errorcontinue errorthrow)) ; formal parameters
+                                          (var-list-to-val-list actual-params s errorbreak errorbreak errorcontinue errorthrow)
+                                          (add-layer ((binding (m-value-variable func-name s errorbreak errorbreak errorcontinue errorthrow))
+                                                      s)) ; get the function that will return the function closure and run the function on the current state to get function environment
+                                          return break continue throw)
+                          return errorbreak errorcontinue errorthrow)))))
     
 
 ; get the value of a function
 (define m-value-function
   (lambda (func-name actual-params s return break continue throw)
-    (call/cc
-     (lambda (return)
-       (m-state-stmt-list (func-body (m-value-variable func-name s errorbreak errorbreak errorcontinue errorthrow))
-                                     (add-parameters (formal-params (m-value-variable func-name s errorbreak errorbreak errorcontinue errorthrow)) ; formal parameters
-                                          (var-list-to-val-list actual-params s errorbreak errorbreak errorcontinue errorthrow)
-                                          (add-layer ((binding (m-value-variable func-name s errorbreak errorbreak errorcontinue errorthrow))
-                                                       s)) ; get the function that will return the function closure and run the function on the current state to get function environment
-                                          return break continue throw)
-                       return errorbreak errorcontinue errorthrow)
-    ))))
+    (m-value-variable 'return
+                      (call/cc
+                       (lambda (return)
+                         (m-state-stmt-list (func-body (m-value-variable func-name s errorbreak errorbreak errorcontinue errorthrow))
+                                            (add-parameters (formal-params (m-value-variable func-name s errorbreak errorbreak errorcontinue errorthrow)) ; formal parameters
+                                                            (var-list-to-val-list actual-params s errorbreak errorbreak errorcontinue errorthrow)
+                                                            (add-layer ((binding (m-value-variable func-name s errorbreak errorbreak errorcontinue errorthrow))
+                                                                        s)) ; get the function that will return the function closure and run the function on the current state to get function environment
+                                                            return break continue throw)
+                                            return errorbreak errorcontinue errorthrow)))
+                      return break continue throw)))
 
 (define var-list-to-val-list
   (lambda (actual-params s return break continue throw)
@@ -379,10 +408,13 @@
                                                              return break continue throw))))
     return break continue throw)))
 
+;(interpret "test/part3/10")
+(interpret "test/part3/7")
 (interpret "test/part3/1")
 (interpret "test/part3/2")
 (interpret "test/part3/3")
 (interpret "test/part3/4")
 (interpret "test/part3/5")
 (interpret "test/part3/6")
-(interpret "test/part3/7")
+(interpret "test/part3/8")
+(interpret "test/part3/9")
