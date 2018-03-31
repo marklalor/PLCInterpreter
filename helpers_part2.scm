@@ -172,9 +172,10 @@
 
 (define convert-to-real-bool
   (lambda (strbool)
-    (if (eq? strbool 'true)
-        #t
-        #f)))
+    (cond
+      ((eq? strbool 'true) #t)
+      ((eq? strbool 'false) #f)
+      (else strbool)))) ; TODO: This doesn't alwasy convert to a real bool
 
 (define convert-to-fake-bool
   (lambda (rlbool)

@@ -290,7 +290,7 @@
 (define m-state-while-loop
   (lambda (while-cond loop-body s return break continue throw)
     (cond
-         ((m-value-exp while-cond s return break continue throw)
+         ((eq? 'true (m-value-exp while-cond s return break continue throw))
           (m-state-while-loop while-cond loop-body
                               (m-state-with-continue loop-body (m-state while-cond s return break continue throw) return break throw) return break continue throw))
          (else
@@ -381,7 +381,6 @@
   (lambda (op exp s return break continue  throw)
     (op (m-value-exp (operand1 exp) s return break continue  throw) (m-value-exp (operand2 exp) (m-state (operand1 exp) s return break continue  throw) return break continue  throw))))
 
-
 (define try-catch-finally-cc
   (lambda (try-block catch-block finally-block s return break continue throw)
     (m-state-block finally-block
@@ -421,4 +420,4 @@
 (interpret "test/part3/10")
 (interpret "test/part3/11")
 ;(interpret "test/part3/12")
-(interpret "test/part3/13")
+(interpret "test/part3/15")
