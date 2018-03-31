@@ -126,6 +126,13 @@
 ; get the actual params for funcall
 (define actual-params cddr)
 
+(define main-function?
+  (lambda (stmt)
+    (cond 
+    ((null? (cdr stmt)) #f)
+    (else
+     (and (eq? (car stmt) 'function)  (eq? (func-name stmt) 'main))))))
+
 
 
 

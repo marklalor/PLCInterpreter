@@ -41,8 +41,9 @@
     (cond
       ((null? stmt) s)
       ((not (list? stmt)) s)
-      ((function? stmt)  (add-function-binding stmt s)); (m-state-function stmt s))
-      ((function-call? stmt) (m-value-function (func-name stmt) (actual-params stmt) (m-state-function stmt s return break continue  throw) return break continue throw))
+      ((main-function? stmt) (add-function-binding stmt s main-func-env))
+      ((function? stmt)  (add-function-binding stmt s get-func-env)); (m-state-function stmt s))
+      ((function-call? stmt) (m-value-function (func-name stmt) (actual-params stmt) s return break continue throw))
       ((try-catch? stmt) (try-catch-finally-cc (try-block stmt) (catch-block stmt) '() s return break continue throw))
       ((try-finally? stmt) (try-catch-finally-cc (try-block stmt) '(catch (e) ()) (finally-block stmt) s return break continue throw))
       ((try-catch-finally? stmt) (try-catch-finally-cc (try-block stmt) (catch-block stmt) (finally-block stmt) s return break continue throw))
@@ -78,12 +79,12 @@
 ; bind the function name to its closure
 ; closure is list that contains param, body, and function that returns binding in scope
 (define add-function-binding
-  (lambda (function s) ;
+  (lambda (function s func-env) ;
     (cond
       ((eq? (func-name function) 'main)
-       (add-var (func-name function) (list (param-body function) main-func-env) s))
+       (add-var (func-name function) (list (param-body function) func-env) s))
       (else
-       (add-var (func-name function) (list (param-body function) get-func-env) s)))))
+       (add-var (func-name function) (list (param-body function) func-env) s)))))
 
 ; add nested functions to the state
 (define m-state-function
@@ -91,7 +92,7 @@
     (cond
       ((null? (cdr s)) s) ; not nested function
       (else
-       (add-function-binding function (add-layer s))))))
+       (add-function-binding function (add-layer s) main-func-env)))))
     
 
 ; get the value of a function
@@ -108,12 +109,21 @@
                                      ;                  s))
                                      
                                      (add-parameters (formal-params (m-value-variable func-name s errorbreak errorbreak errorcontinue errorthrow)) ; formal parameters
-                                          actual-params 
+                                          (var-list-to-val-list actual-params s errorbreak errorbreak errorcontinue errorthrow)
                                           (add-layer ((binding (m-value-variable func-name s errorbreak errorbreak errorcontinue errorthrow))
                                                        s)) ; get the function that will return the function closure and run the function on the current state to get function environment
                                           return break continue throw)
                        return errorbreak errorcontinue errorthrow) 
     ))))
+
+(define var-list-to-val-list
+  (lambda (actual-params s return break continue throw)
+    (cond
+      ((null? actual-params) '())
+      (else
+       (cons (m-value-exp (car actual-params) s return break continue throw)
+             (var-list-to-val-list (cdr actual-params) s return break continue throw))))))
+       
 
 ; return the state where all the formal params is binded to the actual params 
 (define add-parameters
@@ -271,7 +281,7 @@
       ((int-exp? exp) (m-value-int exp s return break continue  throw))
       ((bool-exp? exp) (m-value-bool exp s return break continue  throw))
       ((not (list? exp)) (m-value-variable exp s return break continue  throw))
-      ((function-call? exp) (m-value-function (func-name exp) (actual-params exp) (m-state-function exp s return break continue throw) return break continue throw))
+      ((function-call? exp) (m-value-function (func-name exp) (actual-params exp)  s return break continue throw))
       (else
        (m-value-variable (operand1 exp) (m-state exp s return break continue throw) return break continue throw)))))
 
