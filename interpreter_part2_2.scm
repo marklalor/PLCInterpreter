@@ -117,9 +117,16 @@
   (lambda (actual-params s return break continue throw)
     (cond
       ((null? actual-params) '())
+      ((or (bool? (car actual-params))
+            (number? (car actual-params)))
+       (cons (car actual-params) (var-list-to-val-list (cdr actual-params) s return break continue throw)))
       (else
        (cons (m-value-exp (car actual-params) s return break continue throw)
              (var-list-to-val-list (cdr actual-params) s return break continue throw))))))
+       
+(define bool? ; TODO: move to abstractions/helpers
+  (lambda (exp)
+    (or (eq? 'true exp) (eq? 'false exp))))
        
 
 ; return the state where all the formal params is binded to the actual params 
