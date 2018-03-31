@@ -170,30 +170,36 @@
   (lambda (stmt)
     (eq? (car stmt) 'throw)))
 
+(define convert-to-real-bool
+  (lambda (strbool)
+    (if (eq? strbool 'true)
+        #t
+        #f)))
+
+(define convert-to-fake-bool
+  (lambda (rlbool)
+    (if rlbool
+        'true
+        'false)))
 ; our wrappers for bool operations
 ; our and operator, takes two atoms of 'true or 'false
 (define myand
-  (lambda (bool1 bool2)
-    (and bool1 bool2))) ; convert atom 'true or 'false to #t or #f else run into weird bugs 
+   (lambda (bool1 bool2)
+     (convert-to-fake-bool (and (convert-to-real-bool bool1) (convert-to-real-bool bool2))))) ; convert atom 'true or 'false to #t or #f else run into weird bugs 
 
 ; our or operator, takes two atoms of 'true or 'false
 (define myor
   (lambda (bool1 bool2)
-    (or bool1 bool2)))
+    (convert-to-fake-bool (or (convert-to-real-bool bool1) (convert-to-real-bool bool2)))))
 
 ; our not operator, takes an atom of 'true or 'false
 (define mynot
   (lambda (bool)
-    (not bool)))
-
-(define booloperator
-  (lambda (op)
-    (lambda (bool1 bool2)
-      (op bool1 bool2))))
+    (convert-to-fake-bool (not (convert-to-real-bool bool)))))
 
 (define noteq
  (lambda (bool1 bool2)
-   (not (eq? bool1 bool2))))
+   (convert-to-fake-bool (not (eq? (convert-to-real-bool bool1) (convert-to-real-bool bool2))))))
 
 ; add variable to the first state list in state 
 (define add-var-helper
