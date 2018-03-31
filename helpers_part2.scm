@@ -229,4 +229,18 @@
   (lambda (slayer)
     (cdr slayer)))
 
+
+; PART 3 HELPERS
+(define function?
+  (lambda (stmt)
+    (eq? (car stmt) 'function)))
+
+(define function-call?
+  (lambda (stmt)
+    (eq? (car stmt) 'funcall)))
+
+;(define add-binding
+;  (lambda (name, param-list, body, s)
+;    ()))
+
   

@@ -105,3 +105,27 @@
 (define break?
   (lambda (stmt)
     (eq? (car stmt) 'break)))
+
+; PART 3 ABSTRACTIONS
+
+; abstractions for getting function name and closure from a statement 
+(define func-name cadr)
+(define param-body cddr)
+
+; closure abstractions
+(define formal-params
+  (lambda (closure)
+    (car (car closure))))
+
+(define func-body
+  (lambda (closure)
+    (cadr (car closure))))
+
+(define binding cadr)
+
+; get the actual params for funcall
+(define actual-params cddr)
+
+
+
+
