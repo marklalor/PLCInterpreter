@@ -142,6 +142,8 @@
                                             return errorbreak errorcontinue errorthrow)))
                       return break continue throw)))
 
+; Precondition: actual-params are unboxed values
+; Postcondition: List of unboxed values
 (define var-list-to-val-list
   (lambda (actual-params s return break continue throw)
     (cond
@@ -157,8 +159,8 @@
   (lambda (exp)
     (or (eq? 'true exp) (eq? 'false exp))))
        
-
-; return the state where all the formal params is binded to the actual params 
+; return the state where all the formal params are binded to the actual params
+; Precondition: actual-params are unboxed
 (define add-parameters
   (lambda (formal-params actual-params s return break continue throw)
     (cond
@@ -167,12 +169,10 @@
        (add-parameters (cdr formal-params) (cdr actual-params) (add-parameter (car formal-params) (car actual-params) s return break continue throw)
                        return break continue throw)))))
 
-; returns the state where the formal-param is actual-param is declared 
+; returns the state where the formal-param is actual-param is declared
 (define add-parameter
   (lambda (formal-param actual-param s return break continue throw)
     (m-state-assign formal-param actual-param (m-state-declare formal-param s return break continue throw) return break continue throw)))
-    ;(m-state-assign (assignment-variable stmt) (assignment-expression stmt) (m-state-declare (declaration-variable stmt) s return break continue throw) return break continue  throw))
-    ;(m-state-assign (m-state-declare formal-param s) (m-state-value actual-param s) )))
     
 
 (define m-state-block
@@ -216,7 +216,6 @@
       ((not (declared? variable (m-state exp s return break continue throw))) (error 'UndeclaredVariable))
       (else
        (removeadd variable (m-value-exp exp s return break continue  throw) s)))))
-       ;(add-var variable (m-value-exp exp s) (remove-var variable (m-state exp s)))))))
 
 ; check to see if variable is in the state
 ; if it is in the state, break with (removeadd variable s s-layer)
@@ -240,24 +239,17 @@
       (else
        (cons (car-slayer s-layer) (removeadd variable value (cdr-slayer s-layer)))))))
 
-;(define removeadd
-;  (lambda (variable value s-layer)
-;    (call/cc
-;     (lambda (break)
-;       (cond
-;         ((null? (cdr-slayer s-layer))
-;          (cons (removeaddhelper variable value (car-slayer s-layer) (cdr-slayer s-layer) break) '()))
- ;        (else
-;          (cons (removeaddhelper variable value (car-slayer s-layer) (cdr-slayer s-layer) break)
-;                (removeadd variable value (cdr-slayer s-layer)))))))))
-
-
+; Precondition: value must be unboxed
 (define removeaddlayer
   (lambda (variable value layer)
     (cond
       ((null? layer) layer)
       ((eq? (car (var-list layer)) variable)
-       (list (var-list layer) (cons value (cdr (value-list layer)))))
+       (begin
+         (set-box! (car (value-list layer)) (if (box? value)
+                                                (unbox value)
+                                                value))
+         layer))
       (else
        (add-var-helper (car (var-list layer)) (car (value-list layer)) (removeaddlayer variable value (cdrstate layer)))))))
 
@@ -308,9 +300,9 @@
 ; takes an expression and state
 ; returns a tuple of the value of the expression and a possibly new state 
 (define m-value-exp
-  (lambda (exp s return break continue  throw)
+  (lambda (exp s return break continue throw)
     (cond
-      ;((function-call? exp) (m-value-function (func-name exp) (actual-params exp) s return break continue throw))
+      ;((function-call? exp) (m-value-function (func-name exp) (actul-params exp) s return break continue throw))
       ((int-exp? exp) (m-value-int exp s return break continue  throw))
       ((bool-exp? exp) (m-value-bool exp s return break continue  throw))
       ((not (list? exp)) (m-value-variable exp s return break continue  throw))
@@ -324,11 +316,10 @@
     (cond
       ((not (declared? variable s)) (error 'UndeclaredVariable))
       ((not (assigned? variable s)) (error 'UnassignedVariable))
-      ((null? (car (car-slayer s))) (m-value-variable variable (cdr-slayer s) return break continue  throw))
-      ((eq? (carvar (car-slayer s)) variable) (carval (car-slayer s)))
+      ((null? (var-list (car-slayer s))) (m-value-variable variable (cdr-slayer s) return break continue throw)) ; Check next layer
+      ((eq? (carvar (car-slayer s)) variable) (carval (car-slayer s))) ; Found variable
       (else
-       (m-value-variable variable (cons (cdrstate (car-slayer s)) (cdr-slayer s)) return break continue  throw)))))
-
+       (m-value-variable variable (cons (cdrstate (car-slayer s)) (cdr-slayer s)) return break continue throw))))) ; Checking current layer
 
 ; takes an expression and state, returns the value of the expression and a possibly new state 
 (define m-value-int

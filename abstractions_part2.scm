@@ -18,7 +18,7 @@
 ; get first value in the variable list
 (define carval
   (lambda (s)
-    (car (value-list s))))
+    (unbox (car (value-list s)))))
 
 ; statement abstractions
 
