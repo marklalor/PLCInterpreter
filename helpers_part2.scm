@@ -9,6 +9,10 @@
   (lambda (s)
     (cons (cdr (var-list s)) (cons (cdr (value-list s)) '()))))
 
+(define global-state?
+  (lambda (state)
+    (null? (cdr state))))
+
 ; 
 (define int-exp?
   (lambda (exp)
@@ -205,7 +209,7 @@
 ; add variable to the first state list in state 
 (define add-var-helper
   (lambda (variable value s)
-    (cons (cons variable (var-list s)) (cons (cons value (value-list s)) '()))))
+    (cons (cons variable (var-list s)) (cons (cons (box value) (value-list s)) '()))))
 
 (define add-var
   (lambda (variable value slayer)
