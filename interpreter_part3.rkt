@@ -1,7 +1,7 @@
 ; If you are using racket instead of scheme, uncomment these two lines, comment the (load "simpleParser.scm") and uncomment the (require "simpleParser.scm")
 #lang racket
-;(require "functionParser.scm")
-(require "simpleParser.scm")
+(require "functionParser.scm")
+;(require "simpleParser.scm")
 ;(load "simpleParser.scm")
 
 ; An interpreter for the simple language that uses call/cc for the continuations.  Does not handle side effects.
@@ -41,6 +41,8 @@
       ((eq? 'begin (statement-type statement)) (interpret-block statement environment return break continue throw))
       ((eq? 'throw (statement-type statement)) (interpret-throw statement environment throw))
       ((eq? 'try (statement-type statement)) (interpret-try statement environment return break continue throw))
+      ((eq? 'function (statement-type statement)) (interpret-function statement environment return break continue throw))
+      ((eq? 'funcall (statement-type statement)) (interpret-function-call statement environment return break continue throw))
       (else (myerror "Unknown statement:" (statement-type statement))))))
 
 ; Calls the return continuation with the given expression value
@@ -142,6 +144,14 @@
       ((not (eq? (statement-type finally-statement) 'finally)) (myerror "Incorrectly formatted finally block"))
       (else (cons 'begin (cadr finally-statement))))))
 
+(define interpret-function
+  (lambda (statement environment return break continue throw)
+    ()))
+
+(define interpret-function-call
+  (lambda (statement environment return break continue throw)
+    ()))
+
 ; Evaluates all possible boolean and arithmetic expressions, including constants and variables.
 (define eval-expression
   (lambda (expr environment)
@@ -149,7 +159,10 @@
       ((number? expr) expr)
       ((eq? expr 'true) #t)
       ((eq? expr 'false) #f)
-      ((not (list? expr)) (lookup expr environment))
+      ((not (list? expr))
+       (if (list? (lookup expr environment))
+           (eval-function (lookup expr environment))
+           (lookup expr environment)))
       (else (eval-operator expr environment)))))
 
 ; Evaluate a binary (or unary) operator.  Although this is not dealing with side effects, I have the routine evaluate the left operand first and then
@@ -397,24 +410,24 @@
                             (makestr (string-append str (string-append " " (symbol->string (car vals)))) (cdr vals))))))
       (error-break (display (string-append str (makestr "" vals)))))))
 
-(interpret "test/part2/1")
-(interpret "test/part2/2")
-(interpret "test/part2/3")
-(interpret "test/part2/4")
-(interpret "test/part2/5")
-(interpret "test/part2/6")
-(interpret "test/part2/7")
-(interpret "test/part2/8")
-(interpret "test/part2/9")
-(interpret "test/part2/10")
-(interpret "test/part2/11")
-(interpret "test/part2/12")
-(interpret "test/part2/13")
-(interpret "test/part2/14")
-(interpret "test/part2/15")
-(interpret "test/part2/16")
-(interpret "test/part2/17")
-(interpret "test/part2/18")
-(interpret "test/part2/19")
+(interpret "test/part3/1")
+(interpret "test/part3/2")
+(interpret "test/part3/3")
+(interpret "test/part3/4")
+(interpret "test/part3/5")
+(interpret "test/part3/6")
+(interpret "test/part3/7")
+(interpret "test/part3/8")
+(interpret "test/part3/9")
+(interpret "test/part3/10")
+(interpret "test/part3/11")
+(interpret "test/part3/12")
+(interpret "test/part3/13")
+(interpret "test/part3/14")
+(interpret "test/part3/15")
+(interpret "test/part3/16")
+(interpret "test/part3/17")
+(interpret "test/part3/18")
+(interpret "test/part3/19")
 
 
