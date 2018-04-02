@@ -206,9 +206,7 @@
 ; We return the same environment because this function is only ever used when a function is called without an assignment
 (define interpret-function-call
   (lambda (statement environment return break continue throw)
-    (begin
-      (eval-expression statement environment throw)
-      environment)))
+    ((lambda (value) environment) (eval-expression statement environment throw))))
 
 ; Evaluates all possible boolean and arithmetic expressions, including constants and variables.
 (define eval-expression
