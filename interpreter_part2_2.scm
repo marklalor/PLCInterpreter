@@ -42,14 +42,18 @@
       ((null? stmt) s)
       ((not (list? stmt)) s)
       ((main-function? stmt) (add-function-binding stmt s main-func-env))
-      ((function? stmt)  (add-function-binding stmt s get-func-env)); (m-state-function stmt s))
-      ((function-call? stmt) s)
-      ;((function-call? stmt) (m-state-function (func-name stmt) (actual-params stmt) s return break continue throw))
+      ((function? stmt)  (add-function-binding stmt s get-func-env))
+      ;((function-call? stmt) s)
+      ((function-call? stmt) (merge-state (m-state-function (func-name stmt) (actual-params stmt) s return break continue throw) s)) ; update s with state returned by m-state-function
       ((try-catch? stmt) (try-catch-finally-cc (try-block stmt) (catch-block stmt) '() s return break continue throw))
       ((try-finally? stmt) (try-catch-finally-cc (try-block stmt) '(catch (e) ()) (finally-block stmt) s return break continue throw))
       ((try-catch-finally? stmt) (try-catch-finally-cc (try-block stmt) (catch-block stmt) (finally-block stmt) s return break continue throw))
       ((block? stmt) (m-state-block (cdr stmt) s return break continue throw))
-      ((return? stmt) (return (m-value-exp (return-stmt stmt) s return break continue  throw)))
+      ((return? stmt) (return (m-state-assign 'return
+                                              (m-value-exp (return-stmt stmt) s return break continue throw)
+                                              (m-state-declare 'return
+                                                               s return break continue throw)
+                                              return break continue throw)))
       ((break? stmt) (break s))
       ((continue? stmt) (continue s))
       ((throw? stmt) (throw (m-state-assign 'throw (throw-exp stmt) s return break continue throw))) ; Assign throw the value of the value thrown
@@ -68,6 +72,25 @@
 ;;;;;;;::::
 ; PART THREE
 ;;;;;;;;;;;;
+
+(define merge-state
+  (lambda (prev-s func-s)
+    (append (remove-global-state func-s) (get-global-state prev-s))))
+
+(define get-global-state
+  (lambda (s)
+    (cond
+      ((null? (cdr s)) s)
+      (else
+       (get-global-state (cdr s))))))
+
+(define remove-global-state
+  (lambda (s)
+    (cond
+      ((null? (cdr s)) '())
+      (else
+       (cons (car s) (remove-global-state (cdr s)))))))
+
 ; function that returns the binding in scope
 (define get-func-env
   (lambda (s)
@@ -92,27 +115,35 @@
 
 ; add nested functions to the state
 (define m-state-function
-  (lambda (function s return break continue  throw)
-    (cond
-      ((null? (cdr s)) s) ; not nested function
-      (else
-       (add-function-binding function (add-layer s) main-func-env)))))
+  (lambda (func-name actual-params s return break continue throw)
+    (call/cc
+     (lambda (return)
+       (m-state-stmt-list (func-body (m-value-variable func-name s errorbreak errorbreak errorcontinue errorthrow))
+                          (add-parameters (formal-params (m-value-variable func-name s errorbreak errorbreak errorcontinue errorthrow)) ; formal parameters
+                                          (var-list-to-val-list actual-params s errorbreak errorbreak errorcontinue errorthrow)
+                                          (add-layer ((binding (m-value-variable func-name s errorbreak errorbreak errorcontinue errorthrow))
+                                                      s)) ; get the function that will return the function closure and run the function on the current state to get function environment
+                                          return break continue throw)
+                          return errorbreak errorcontinue errorthrow)))))
     
 
 ; get the value of a function
 (define m-value-function
   (lambda (func-name actual-params s return break continue throw)
-    (call/cc
-     (lambda (return)
-       (m-state-stmt-list (func-body (m-value-variable func-name s errorbreak errorbreak errorcontinue errorthrow))
-                                     (add-parameters (formal-params (m-value-variable func-name s errorbreak errorbreak errorcontinue errorthrow)) ; formal parameters
-                                          (var-list-to-val-list actual-params s errorbreak errorbreak errorcontinue errorthrow)
-                                          (add-layer ((binding (m-value-variable func-name s errorbreak errorbreak errorcontinue errorthrow))
-                                                       s)) ; get the function that will return the function closure and run the function on the current state to get function environment
-                                          return break continue throw)
-                       return errorbreak errorcontinue errorthrow)
-    ))))
+    (m-value-variable 'return
+                      (call/cc
+                       (lambda (return)
+                         (m-state-stmt-list (func-body (m-value-variable func-name s errorbreak errorbreak errorcontinue errorthrow))
+                                            (add-parameters (formal-params (m-value-variable func-name s errorbreak errorbreak errorcontinue errorthrow)) ; formal parameters
+                                                            (var-list-to-val-list actual-params s errorbreak errorbreak errorcontinue errorthrow)
+                                                            (add-layer ((binding (m-value-variable func-name s errorbreak errorbreak errorcontinue errorthrow))
+                                                                        s)) ; get the function that will return the function closure and run the function on the current state to get function environment
+                                                            return break continue throw)
+                                            return errorbreak errorcontinue errorthrow)))
+                      return break continue throw)))
 
+; Precondition: actual-params are unboxed values
+; Postcondition: List of unboxed values
 (define var-list-to-val-list
   (lambda (actual-params s return break continue throw)
     (cond
@@ -128,8 +159,8 @@
   (lambda (exp)
     (or (eq? 'true exp) (eq? 'false exp))))
        
-
-; return the state where all the formal params is binded to the actual params 
+; return the state where all the formal params are binded to the actual params
+; Precondition: actual-params are unboxed
 (define add-parameters
   (lambda (formal-params actual-params s return break continue throw)
     (cond
@@ -138,12 +169,10 @@
        (add-parameters (cdr formal-params) (cdr actual-params) (add-parameter (car formal-params) (car actual-params) s return break continue throw)
                        return break continue throw)))))
 
-; returns the state where the formal-param is actual-param is declared 
+; returns the state where the formal-param is actual-param is declared
 (define add-parameter
   (lambda (formal-param actual-param s return break continue throw)
     (m-state-assign formal-param actual-param (m-state-declare formal-param s return break continue throw) return break continue throw)))
-    ;(m-state-assign (assignment-variable stmt) (assignment-expression stmt) (m-state-declare (declaration-variable stmt) s return break continue throw) return break continue  throw))
-    ;(m-state-assign (m-state-declare formal-param s) (m-state-value actual-param s) )))
     
 
 (define m-state-block
@@ -187,7 +216,6 @@
       ((not (declared? variable (m-state exp s return break continue throw))) (error 'UndeclaredVariable))
       (else
        (removeadd variable (m-value-exp exp s return break continue  throw) s)))))
-       ;(add-var variable (m-value-exp exp s) (remove-var variable (m-state exp s)))))))
 
 ; check to see if variable is in the state
 ; if it is in the state, break with (removeadd variable s s-layer)
@@ -211,24 +239,17 @@
       (else
        (cons (car-slayer s-layer) (removeadd variable value (cdr-slayer s-layer)))))))
 
-;(define removeadd
-;  (lambda (variable value s-layer)
-;    (call/cc
-;     (lambda (break)
-;       (cond
-;         ((null? (cdr-slayer s-layer))
-;          (cons (removeaddhelper variable value (car-slayer s-layer) (cdr-slayer s-layer) break) '()))
- ;        (else
-;          (cons (removeaddhelper variable value (car-slayer s-layer) (cdr-slayer s-layer) break)
-;                (removeadd variable value (cdr-slayer s-layer)))))))))
-
-
+; Precondition: value must be unboxed
 (define removeaddlayer
   (lambda (variable value layer)
     (cond
       ((null? layer) layer)
       ((eq? (car (var-list layer)) variable)
-       (list (var-list layer) (cons value (cdr (value-list layer)))))
+       (begin
+         (set-box! (car (value-list layer)) (if (box? value)
+                                                (unbox value)
+                                                value))
+         layer))
       (else
        (add-var-helper (car (var-list layer)) (car (value-list layer)) (removeaddlayer variable value (cdrstate layer)))))))
 
@@ -261,7 +282,7 @@
 (define m-state-while-loop
   (lambda (while-cond loop-body s return break continue throw)
     (cond
-         ((m-value-exp while-cond s return break continue throw)
+         ((eq? 'true (m-value-exp while-cond s return break continue throw))
           (m-state-while-loop while-cond loop-body
                               (m-state-with-continue loop-body (m-state while-cond s return break continue throw) return break throw) return break continue throw))
          (else
@@ -279,9 +300,9 @@
 ; takes an expression and state
 ; returns a tuple of the value of the expression and a possibly new state 
 (define m-value-exp
-  (lambda (exp s return break continue  throw)
+  (lambda (exp s return break continue throw)
     (cond
-      ;((function-call? exp) (m-value-function (func-name exp) (actual-params exp) s return break continue throw))
+      ;((function-call? exp) (m-value-function (func-name exp) (actul-params exp) s return break continue throw))
       ((int-exp? exp) (m-value-int exp s return break continue  throw))
       ((bool-exp? exp) (m-value-bool exp s return break continue  throw))
       ((not (list? exp)) (m-value-variable exp s return break continue  throw))
@@ -295,11 +316,10 @@
     (cond
       ((not (declared? variable s)) (error 'UndeclaredVariable))
       ((not (assigned? variable s)) (error 'UnassignedVariable))
-      ((null? (car (car-slayer s))) (m-value-variable variable (cdr-slayer s) return break continue  throw))
-      ((eq? (carvar (car-slayer s)) variable) (carval (car-slayer s)))
+      ((null? (var-list (car-slayer s))) (m-value-variable variable (cdr-slayer s) return break continue throw)) ; Check next layer
+      ((eq? (carvar (car-slayer s)) variable) (carval (car-slayer s))) ; Found variable
       (else
-       (m-value-variable variable (cons (cdrstate (car-slayer s)) (cdr-slayer s)) return break continue  throw)))))
-
+       (m-value-variable variable (cons (cdrstate (car-slayer s)) (cdr-slayer s)) return break continue throw))))) ; Checking current layer
 
 ; takes an expression and state, returns the value of the expression and a possibly new state 
 (define m-value-int
@@ -320,17 +340,17 @@
   (lambda (exp s return break continue  throw)
     (cond
       ((null? exp) (error 'EmptyCondition))
-      ((eq? exp 'true) #t)
-      ((eq? exp 'false) #f)
-      ((eq? (operator exp) '&&) (m-value-booleanop myand exp s return break continue  throw))
-      ((eq? (operator exp) '||) (m-value-booleanop myor exp s return break continue  throw))
-      ((eq? (operator exp) '==) (m-value-booleanop eq? exp s return break continue  throw))
-      ((eq? (operator exp) '!=) (m-value-booleanop noteq exp s return break continue  throw))
-      ((eq? (operator exp) '<) (m-value-booleanop < exp s return break continue  throw))
-      ((eq? (operator exp) '<=) (m-value-booleanop <= exp s return break continue  throw))
-      ((eq? (operator exp) '>) (m-value-booleanop > exp s return break continue  throw))
-      ((eq? (operator exp) '>=) (m-value-booleanop >= exp s return break continue  throw))
-      ((eq? (operator exp) '!) (m-value-unaryop not exp s return break continue  throw))
+      ((eq? exp 'true) 'true)
+      ((eq? exp 'false) 'false)
+      ((eq? (operator exp) '&&) (m-value-booleanop myand exp s return break continue throw))
+      ((eq? (operator exp) '||) (m-value-booleanop myor exp s return break continue throw))
+      ((eq? (operator exp) '==) (m-value-booleanop eq? exp s return break continue throw))
+      ((eq? (operator exp) '!=) (m-value-booleanop noteq exp s return break continue throw))
+      ((eq? (operator exp) '<) (m-value-booleanop < exp s return break continue throw))
+      ((eq? (operator exp) '<=) (m-value-booleanop <= exp s return break continue throw))
+      ((eq? (operator exp) '>) (m-value-booleanop > exp s return break continue throw))
+      ((eq? (operator exp) '>=) (m-value-booleanop >= exp s return break continue throw))
+      ((eq? (operator exp) '!) (m-value-unaryop not exp s return break continue throw))
       (else (error 'badoperation "Unknown operator")))))
 
 ; takes a binary operator, expression, and state, returns 2-tuple of value of expression and the possibly new state
@@ -351,7 +371,6 @@
 (define m-value-booleanop
   (lambda (op exp s return break continue  throw)
     (op (m-value-exp (operand1 exp) s return break continue  throw) (m-value-exp (operand2 exp) (m-state (operand1 exp) s return break continue  throw) return break continue  throw))))
-
 
 (define try-catch-finally-cc
   (lambda (try-block catch-block finally-block s return break continue throw)
@@ -379,6 +398,7 @@
                                                              return break continue throw))))
     return break continue throw)))
 
+(interpret "test/part3/14")
 (interpret "test/part3/1")
 (interpret "test/part3/2")
 (interpret "test/part3/3")
@@ -386,3 +406,9 @@
 (interpret "test/part3/5")
 (interpret "test/part3/6")
 (interpret "test/part3/7")
+(interpret "test/part3/8")
+(interpret "test/part3/9")
+(interpret "test/part3/10")
+(interpret "test/part3/11")
+;(interpret "test/part3/12")
+(interpret "test/part3/15")
