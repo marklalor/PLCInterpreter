@@ -1,3 +1,5 @@
+; Brian Li (bvl8) Helen Zhao (hxz347) Mark Lalor (mwl58)
+
 ; If you are using racket instead of scheme, uncomment these two lines, comment the (load "simpleParser.scm") and uncomment the (require "simpleParser.scm")
 #lang racket
 (require "functionParser.scm")
@@ -156,20 +158,19 @@
       ((not (eq? (statement-type finally-statement) 'finally)) (myerror "Incorrectly formatted finally block"))
       (else (cons 'begin (cadr finally-statement))))))
 
+; Adds a function definition to the environment and returns the result of the new state
 (define interpret-function
   (lambda (statement environment return break continue throw)
     (add-function-binding statement environment)))
 
+; Takes a function definition and adds it to the environment
 (define add-function-binding
   (lambda (statement environment)
     (if (global-environment? environment)
         (insert (func-name statement) (list (param-body statement) get-global-environment-func) environment)
         (insert (func-name statement) (list (param-body statement) (get-snapshot-environment-func (func-name statement))) environment))))
 
-(define global-environment?
-  (lambda (environment)
-    (null? (cdr environment))))
-
+; Takes an environment and returns the global frame of the environment
 (define get-global-environment-func
   (lambda (environment)
     (cond
@@ -177,39 +178,32 @@
       (else
        (get-global-environment-func (cdr environment))))))
 
+; Takes a function name and returns a function that maps the given environment to an updated snapshot environment
 (define get-snapshot-environment-func
-  (lambda (name)
+  (lambda (function-name)
     (lambda (environment)
-      (filter-environment-by-name name environment))))
+      (filter-environment-by-name function-name environment))))
 
+; Filters elements from environment until the first instance of name is matched
 (define filter-environment-by-name
   (lambda (name environment)
     (cond
       ((exists-in-list? name (variables (topframe environment)))
-       (cons (up-to-name name (topframe environment)) (remainingframes environment)))
+       (cons (suffix name (topframe environment)) (remainingframes environment)))
       (else
        (filter-environment-by-name name (remainingframes environment))))))
 
-(define up-to-name
-  (lambda (name frame)
+; Returns the list when the first item of the list matches 'x
+; (suffix 'x '(a b c x d)) => (x d)
+(define suffix
+  (lambda (x lis)
     (cond
-      ((eq? (car (variables frame)) name) frame)
-      (else (up-to-name name (list (cdr (variables frame)) (cdr (store frame))))))))
-     
-; abstractions for getting function name and closure from a statement 
-(define func-name cadr)
-(define param-body cddr)
+      ((eq? (car (variables lis)) x) lis)
+      (else (suffix x (list (cdr (variables lis)) (cdr (store lis))))))))
 
-; closure abstractions
-(define formal-params caar)
-(define func-body
-  (lambda (closure)
-    (cadr (car closure))))
-(define environment-function cadr)
-
-; get the actual params for funcall
-(define actual-params cddr)
-                                           
+; Evaluates the expression and then returns the environment
+; Uses begin because eval-expression must first modify the environment using boxes
+; We return the same environment because this function is only ever used when a function is called without an assignment
 (define interpret-function-call
   (lambda (statement environment return break continue throw)
     (begin
@@ -227,6 +221,14 @@
       ((eq? (statement-type expr) 'funcall) (eval-function expr environment throw))
       (else (eval-operator expr environment throw)))))
 
+; Uses eval-expression on a list
+(define eval-expression-list
+  (lambda (expr-list environment throw)
+    (if (null? expr-list)
+        expr-list
+        (cons (eval-expression (car expr-list) environment throw) (eval-expression-list (cdr expr-list) environment throw)))))
+
+; Gives the value result of a function
 (define eval-function
   (lambda (expr environment throw)
     (call/cc
@@ -234,21 +236,9 @@
        (let ((closure (lookup (func-name expr) environment)))
          (interpret-statement-list (func-body closure)
                                    (insert-all (formal-params closure)
-                                               (evaluate-expression-list (actual-params expr) environment throw)
+                                               (eval-expression-list (actual-params expr) environment throw)
                                                (push-frame ((environment-function closure) environment)))
                                    function-return break-error continue-error (lambda (v func-env) (throw v environment))))))))
-
-(define evaluate-expression-list
-  (lambda (expr-list environment throw)
-    (if (null? expr-list)
-        expr-list
-        (cons (eval-expression (car expr-list) environment throw) (evaluate-expression-list (cdr expr-list) environment throw)))))
-                  
-(define insert-all
-  (lambda (var-list val-list environment)
-    (if (null? var-list)
-        environment
-        (insert-all (cdr var-list) (cdr val-list) (insert (car var-list) (car val-list) environment)))))
       
 ; Evaluate a binary (or unary) operator.  Although this is not dealing with side effects, I have the routine evaluate the left operand first and then
 ; pass the result to eval-binary-op2 to evaluate the right operand.  This forces the operands to be evaluated in the proper order in case you choose
@@ -305,6 +295,10 @@
   (lambda (statement)
     (not (null? (cdddr statement)))))
 
+(define global-environment?
+  (lambda (environment)
+    (null? (cdr environment))))
+
 ; these helper functions define the parts of the various statement types
 (define statement-type operator)
 (define get-expr operand1)
@@ -320,7 +314,17 @@
 (define exists-else? exists-operand3?)
 (define get-try operand1)
 (define get-catch operand2)
-(define get-finally operand3)
+(define get-finally operand3); abstractions for getting function name and closure from a statement 
+(define func-name cadr)
+(define param-body cddr)
+(define formal-params caar)
+(define environment-function cadr)
+(define func-body
+  (lambda (closure)
+    (cadr (car closure))))
+
+; get the actual params for funcall
+(define actual-params cddr)
 
 (define catch-var
   (lambda (catch-statement)
@@ -420,6 +424,13 @@
     (if (exists-in-list? var (variables (car environment)))
         (myerror "error: variable is being re-declared:" var)
         (cons (add-to-frame var val (car environment)) (cdr environment)))))
+
+; Uses insert function to insert a list of variables and values
+(define insert-all
+  (lambda (var-list val-list environment)
+    (if (null? var-list)
+        environment
+        (insert-all (cdr var-list) (cdr val-list) (insert (car var-list) (car val-list) environment)))))
 
 ; Changes the binding of a variable to a new value in the environment.  Gives an error if the variable does not exist.
 (define update
