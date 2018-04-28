@@ -15,9 +15,9 @@
 
 ; The main function.  Calls parser to get the parse tree and interprets it with a new environment.  The returned value is in the environment.
 (define interpret
-  (lambda (file)
+  (lambda (file main-class)
     (scheme->language
-     (eval-expression '(funcall main)
+     (eval-expression (list 'funcall (list 'dot main-class 'main))
                       (call/cc
                        (lambda (return)
                          (interpret-statement-list (parser file) (newenvironment) return break-error continue-error throw-error)))
@@ -46,6 +46,7 @@
 (define interpret-statement
   (lambda (statement environment return break continue throw)
     (cond
+      ((eq? 'class (statement-type statement)) (interpret-class statement environment))
       ((eq? 'return (statement-type statement)) (interpret-return statement environment return throw))
       ((eq? 'var (statement-type statement)) (interpret-declare statement environment throw))
       ((eq? '= (statement-type statement)) (interpret-assign statement environment throw))
@@ -56,9 +57,36 @@
       ((eq? 'begin (statement-type statement)) (interpret-block statement environment return break continue throw))
       ((eq? 'throw (statement-type statement)) (interpret-throw statement environment throw))
       ((eq? 'try (statement-type statement)) (interpret-try statement environment return break continue throw))
+      ((eq? 'static-function (statement-type statement)) (interpret-function statement environment return break continue throw)) ;only main is static
       ((eq? 'function (statement-type statement)) (interpret-function statement environment return break continue throw))
-      ((eq? 'funcall (statement-type statement)) (interpret-function-call statement environment return break continue throw))
+      ((eq? 'funcall (statement-type statement)) (interpret-function-call statement environment return break continue throw))                                                        
       (else (myerror "Unknown statement:" (statement-type statement))))))
+
+(define filter-sublists
+  (lambda (list query)
+    (cond
+      ((null? list) list)
+      ((eq? (statement-type (car list)) query) (cons (car list) (filter-sublists (cdr list) query)))
+      (else (filter-sublists (cdr list) query)))))
+
+; Adds the class closure to the environment
+(define interpret-class
+  (lambda (statement environment)
+    (let ([return (lambda (env) (break-error env))]
+          [break (lambda (env) (break-error env))]
+          [continue (lambda (env) (continue-error env))]
+          [throw (lambda (env) (throw-error env))])
+      (insert (class-name statement)
+              (list (interpret-statement-list (filter-sublists (class-body statement) 'var)
+                                              environment return break continue throw)
+                    (interpret-statement-list (append (filter-sublists (class-body statement) 'function)
+                                                      (filter-sublists (class-body statement) 'static-function))
+                                              environment return break continue throw)
+                    (lambda (env) (if (extends? (class-superclass statement))
+                                      (lookup (superclass-name (class-superclass statement)) env)
+                                      (empty-class-closure))))
+              environment))))
+
 
 ; Calls the return continuation with the given expression value
 (define interpret-return
@@ -75,7 +103,12 @@
 ; Updates the environment to add an new binding for a variable
 (define interpret-assign
   (lambda (statement environment throw)
-    (update (get-assign-lhs statement) (eval-expression (get-assign-rhs statement) environment throw) environment)))
+    (let ((assign-lhs (get-assign-lhs statement)))
+      (if (list? assign-lhs) ; should abstract as dot?
+          (update (dot-rhs assign-lhs)
+                  (eval-expression (get-assign-rhs statement) environment throw)
+                  (oclosure-vars (lookup (dot-lhs assign-lhs) environment)))
+          (update assign-lhs (eval-expression (get-assign-rhs statement) environment throw) environment)))))
 
 ; We need to check if there is an else condition.  Otherwise, we evaluate the expression and do the right thing.
 (define interpret-if
@@ -219,8 +252,46 @@
       ((eq? expr 'true) #t)
       ((eq? expr 'false) #f)
       ((not (list? expr)) (lookup expr environment))
-      ((eq? (statement-type expr) 'funcall) (eval-function expr environment throw))
+      ((eq? (statement-type expr) 'new) (eval-new (class-name expr) environment))
+      ((eq? (statement-type expr) 'dot) (eval-dot expr environment throw)) ; always getting instance fields 
+      ((eq? (statement-type expr) 'funcall) (eval-function (to-dot-expr expr) environment throw))
       (else (eval-operator expr environment throw)))))
+
+(define eval-dot
+  (lambda (expr environment throw)
+    (let ((oclosure (eval-expression (dot-lhs expr) environment throw)))    
+      (eval-expression (dot-rhs expr) (oclosure-vars oclosure) throw))))
+
+; returns instance closure
+(define eval-new
+  (lambda (class-name environment)
+    (let ((oclosure (lookup class-name environment)))
+      (list (environment-shallow-copy (oclosure-vars oclosure))
+            (environment-shallow-copy (oclosure-funs oclosure)) 
+            (oclosure-superfun oclosure))))) ; referring to superclass class and not superclass instance
+
+(define environment-shallow-copy
+  (lambda (environment)
+    (cond
+      ((null? environment) environment)
+      (else
+       (cons (frame-shallow-copy (topframe environment))
+          (environment-shallow-copy (remainingframes environment)))))))
+
+; copy class closure
+(define frame-shallow-copy
+  (lambda (frame)
+    (cond
+      ((null? (car frame)) frame)
+      (else
+       (add-to-frame (car (variables frame)) (lookup-in-frame (car (variables frame)) frame)
+                     (frame-shallow-copy (list (cdr (variables frame)) (cdr (cadr frame)))))))))
+
+(define to-dot-expr
+  (lambda (expr)
+    (if (list? expr)
+      expr
+      (list 'dot 'this expr))))
 
 ; Uses eval-expression on a list
 (define eval-expression-list
@@ -230,15 +301,23 @@
         (cons (eval-expression (car expr-list) environment throw) (eval-expression-list (cdr expr-list) environment throw)))))
 
 ; Gives the value result of a function
+; pre-condition: expr always contains a dot expression
 (define eval-function
   (lambda (expr environment throw)
     (call/cc
      (lambda (function-return)
-       (let ((closure (lookup (func-name expr) environment)))
+       (letrec ((oclosure (eval-expression (dot-lhs (func-name expr)) environment throw))
+                (closure (lookup (dot-rhs (func-name expr))
+                                 (oclosure-funs oclosure)))
+                (superclosure ((oclosure-superfun oclosure) environment)))
          (interpret-statement-list (func-body closure)
-                                   (insert-all (formal-params closure)
-                                               (eval-expression-list (actual-params expr) environment throw)
-                                               (push-frame ((environment-function closure) environment)))
+                                   (insert 'super
+                                           superclosure
+                                           (insert 'this
+                                                   oclosure
+                                                   (insert-all (formal-params closure)
+                                                               (eval-expression-list (actual-params expr) environment throw)
+                                                               (push-frame ((environment-function closure) environment)))))
                                    function-return break-error continue-error (lambda (v func-env) (throw v environment))))))))
       
 ; Evaluate a binary (or unary) operator.  Although this is not dealing with side effects, I have the routine evaluate the left operand first and then
@@ -282,6 +361,23 @@
 ; HELPER FUNCTIONS
 ;-----------------
 
+(define class-name cadr)
+(define class-superclass caddr)
+(define class-body cadddr)
+
+(define superclass-name cadr)
+
+(define extends?
+  (lambda (expr)
+    (not (null? expr))))
+
+(define oclosure-vars car)
+(define oclosure-funs cadr)
+(define oclosure-superfun caddr)
+
+(define dot-lhs cadr)
+(define dot-rhs caddr)
+    
 ; These helper functions define the operator and operands of a value expression
 (define operator car)
 (define operand1 cadr)
@@ -336,6 +432,11 @@
 ; Environment/State Functions
 ;------------------------
 
+; create an empty class closure
+(define empty-class-closure
+  (lambda ()
+    '((()()) (()()) (lambda(env) '()))))
+      
 ; create a new empty environment
 (define newenvironment
   (lambda ()
@@ -506,24 +607,16 @@
       (error-break (display (string-append str (makestr "" vals)))))))
 
 
-;(interpret "test/part4/19")
-;(interpret "test/part4/1")
-;(interpret "test/part4/2")
-;(interpret "test/part4/3")
-;(interpret "test/part4/4")
-;(interpret "test/part4/5")
-;(interpret "test/part4/6")
-;(interpret "test/part4/7")
+(interpret "test/part4/1" 'A)
+(interpret "test/part4/2" 'A)
+(interpret "test/part4/3" 'A)
+(interpret "test/part4/4" 'A)
+(interpret "test/part4/5" 'A)
+(interpret "test/part4/6" 'A)
+(interpret "test/part4/7" 'C)
 ;(interpret "test/part4/8")
 ;(interpret "test/part4/9")
 ;(interpret "test/part4/10")
 ;(interpret "test/part4/11")
 ;(interpret "test/part4/12")
 ;(interpret "test/part4/13")
-;(interpret "test/part4/14")
-;(interpret "test/part4/15")
-;(interpret "test/part4/16")
-;(interpret "test/part4/17")
-;(interpret "test/part4/18")
-;(interpret "test/part4/19")
-;(interpret "test/part4/20")
