@@ -108,12 +108,17 @@
 ; Updates the environment to add an new binding for a variable
 (define interpret-assign
   (lambda (statement environment throw)
-    (let ((assign-lhs (get-assign-lhs statement)))
+    (let ((assign-lhs (get-assign-lhs statement))
+          (oclosure (if (exists? 'this environment)
+                        (lookup 'this environment)
+                        '())))
       (if (list? assign-lhs) ; should abstract as dot?
           (update (dot-rhs assign-lhs)
                   (eval-expression (get-assign-rhs statement) environment throw)
                   (instance-fields (lookup (dot-lhs assign-lhs) environment)))
-          (update assign-lhs (eval-expression (get-assign-rhs statement) environment throw) environment)))))
+          (update assign-lhs (eval-expression (get-assign-rhs statement) environment throw) (if (exists? assign-lhs environment)
+                                                                                                environment
+                                                                                                (instance-fields oclosure)))))))
 
 ; We need to check if there is an else condition.  Otherwise, we evaluate the expression and do the right thing.
 (define interpret-if
@@ -375,9 +380,9 @@
 
 (define to-dot-expr
   (lambda (expr)
-    (if (list? expr)
+    (if (list? (cadr expr)) ; Input for expr is usually (funcall ... params)
       expr
-      (list 'dot 'this expr))))
+      (append (list 'funcall (list 'dot 'this (cadr expr))) (cddr expr)))))
 
 ; Uses eval-expression on a list
 (define eval-expression-list
@@ -422,6 +427,7 @@
         ((exists? fun-name fun-env) (lookup fun-name fun-env))
         (else
          (lookup-fun fun-name sclosure environment))))))
+
 ; Evaluate a binary (or unary) operator.  Although this is not dealing with side effects, I have the routine evaluate the left operand first and then
 ; pass the result to eval-binary-op2 to evaluate the right operand.  This forces the operands to be evaluated in the proper order in case you choose
 ; to add side effects to the interpreter
@@ -720,8 +726,8 @@
 ;(interpret "test/part4/6" 'A)
 ;(interpret "test/part4/7" 'C)
 (interpret "test/part4/8" 'Square)
-;(interpret "test/part4/9" 'Square)
-;(interpret "test/part4/10" 'List)
+(interpret "test/part4/9" 'Square)
+(interpret "test/part4/10" 'List)
 ;(interpret "test/part4/11" 'List)
 ;(interpret "test/part4/12" 'List)
 ;(interpret "test/part4/13" 'List)
