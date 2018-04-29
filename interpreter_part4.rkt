@@ -84,7 +84,7 @@
                                               environment return break continue throw)
                     (lambda (env) (if (extends? (class-superclass statement))
                                       (lookup (superclass-name (class-superclass statement)) env)
-                                      (empty-class-closure))))
+                                      '())))
               environment))))
 
 
@@ -107,7 +107,7 @@
       (if (list? assign-lhs) ; should abstract as dot?
           (update (dot-rhs assign-lhs)
                   (eval-expression (get-assign-rhs statement) environment throw)
-                  (oclosure-vars (lookup (dot-lhs assign-lhs) environment)))
+                  (instance-fields (lookup (dot-lhs assign-lhs) environment)))
           (update assign-lhs (eval-expression (get-assign-rhs statement) environment throw) environment)))))
 
 ; We need to check if there is an else condition.  Otherwise, we evaluate the expression and do the right thing.
@@ -257,18 +257,59 @@
       ((eq? (statement-type expr) 'funcall) (eval-function (to-dot-expr expr) environment throw))
       (else (eval-operator expr environment throw)))))
 
+(define eval-var
+  (lambda (var-name environment)
+    (letrec ((oclosure (lookup 'this environment)) ; object closure has variables in reverse order
+             (cclosure (instance-class oclosure)) ; class closure has variabes in order
+             (instance-fields (topframe (instance-fields oclosure)))) ; reverse order of the instance field values
+      (cond
+        ((exists? var-name environment) (lookup var-name environment)) ; if variable exists in the current environment, use the value of the variable
+        (else
+         ; get the ith value of reverse order value list and i is index to end of the variables of the class closure
+         (get-ith-val-in-env (instance-fields oclosure) (- (length (variables cclosure-vars)) (+ (indexof var-name (variables cclosure-vars) 1)))))))))
+
 (define eval-dot
   (lambda (expr environment throw)
     (let ((oclosure (eval-expression (dot-lhs expr) environment throw)))    
-      (eval-expression (dot-rhs expr) (oclosure-vars oclosure) throw))))
+      (eval-expression (dot-rhs expr) (instance-fields oclosure) throw))))
 
 ; returns instance closure
 (define eval-new
   (lambda (class-name environment)
     (let ((oclosure (lookup class-name environment)))
-      (list (environment-shallow-copy (oclosure-vars oclosure))
-            (environment-shallow-copy (oclosure-funs oclosure)) 
-            (oclosure-superfun oclosure))))) ; referring to superclass class and not superclass instance
+      (list (get-instance-fields oclosure environment) ; all the variables accessible in class-name in reverse order
+            oclosure)))) ; referring to superclass class and not superclass instance
+
+(define get-instance-fields
+  (lambda (cclosure environment)
+    (let ((sclosure ((cclosure-superfun cclosure) environment)))
+      (cond
+        ((null? sclosure) (newenvironment)) ; We have to assume that if there's no parent class, the parent sclosure is '()
+        (else
+         (append (environment-shallow-copy (get-instance-fields sclosure))
+                 (environment-shallow-copy (cclosure-vars cclosure environment)))))))) ; reverse order. Super class's frame before current class's frame
+
+(define reverse-environment
+  (lambda (env)
+    (reverse* (reverse env))))
+
+(define reverse*
+ (lambda (l)
+   (cond
+     ((null? l) '())
+     ((list? (car l)) (cons (reverse* (car l)) (reverse* (cdr l))))
+     (else
+      (append (reverse* (cdr l)) (list (car l)))))))
+
+(define get-ith-val-in-env
+ (lambda (env i)
+   (list-ref (combine-env-vals env) i)))
+
+(define combine-env-vals
+ (lambda (env)
+   (cond
+     ((null? env) '())
+     (else (append (cadr (car env)) (combine-env-vals (cdr env)))))))
 
 (define environment-shallow-copy
   (lambda (environment)
@@ -306,10 +347,12 @@
   (lambda (expr environment throw)
     (call/cc
      (lambda (function-return)
-       (letrec ((oclosure (eval-expression (dot-lhs (func-name expr)) environment throw))
-                (closure (lookup (dot-rhs (func-name expr))
-                                 (oclosure-funs oclosure)))
-                (superclosure ((oclosure-superfun oclosure) environment)))
+       (letrec ((oclosure (eval-expression (dot-lhs (func-name expr)) environment throw)) ; object closure only contains class closure and instance fields
+                (cclosure (instance-class oclosure))
+                (closure (lookup-fun (dot-rhs (func-name expr))
+                                     cclosure
+                                     environment))
+                (superclosure ((cclosure-superfun cclosure) environment)))
          (interpret-statement-list (func-body closure)
                                    (insert 'super
                                            superclosure
@@ -319,7 +362,15 @@
                                                                (eval-expression-list (actual-params expr) environment throw)
                                                                (push-frame ((environment-function closure) environment)))))
                                    function-return break-error continue-error (lambda (v func-env) (throw v environment))))))))
-      
+
+(define lookup-fun
+  (lambda (fun-name cclosure environment)
+    (let ((fun-env (cclosure-funs cclosure))
+          (sclosure ((cclosure-superfun cclosure) environment)))
+      (cond
+        ((exists? fun-name fun-env) (lookup fun-name fun-env))
+        (else
+         (lookup-fun fun-name sclosure environment))))))
 ; Evaluate a binary (or unary) operator.  Although this is not dealing with side effects, I have the routine evaluate the left operand first and then
 ; pass the result to eval-binary-op2 to evaluate the right operand.  This forces the operands to be evaluated in the proper order in case you choose
 ; to add side effects to the interpreter
@@ -371,12 +422,15 @@
   (lambda (expr)
     (not (null? expr))))
 
-(define oclosure-vars car)
-(define oclosure-funs cadr)
-(define oclosure-superfun caddr)
+(define cclosure-vars car)
+(define cclosure-funs cadr)
+(define cclosure-superfun caddr)
 
 (define dot-lhs cadr)
 (define dot-rhs caddr)
+
+(define instance-fields car)
+(define instance-class cadr)
     
 ; These helper functions define the operator and operands of a value expression
 (define operator car)
@@ -431,11 +485,6 @@
 ;------------------------
 ; Environment/State Functions
 ;------------------------
-
-; create an empty class closure
-(define empty-class-closure
-  (lambda ()
-    '((()()) (()()) (lambda(env) '()))))
       
 ; create a new empty environment
 (define newenvironment
@@ -607,13 +656,13 @@
       (error-break (display (string-append str (makestr "" vals)))))))
 
 
-(interpret "test/part4/1" 'A)
-(interpret "test/part4/2" 'A)
-(interpret "test/part4/3" 'A)
-(interpret "test/part4/4" 'A)
-(interpret "test/part4/5" 'A)
-(interpret "test/part4/6" 'A)
-(interpret "test/part4/7" 'C)
+;(interpret "test/part4/1" 'A)
+;(interpret "test/part4/2" 'A)
+;(interpret "test/part4/3" 'A)
+;(interpret "test/part4/4" 'A)
+;(interpret "test/part4/5" 'A)
+;(interpret "test/part4/6" 'A)
+;(interpret "test/part4/7" 'C)
 ;(interpret "test/part4/8")
 ;(interpret "test/part4/9")
 ;(interpret "test/part4/10")
