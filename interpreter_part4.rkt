@@ -269,9 +269,12 @@
     (letrec ((oclosure (if (exists? 'this environment)
                            (lookup 'this environment)
                            '())) ; object closure has variables in reverse order
-             (cclosure (if (null? oclosure)
-                           '()
-                           (instance-class oclosure))) ; class closure has variabes in order
+             (cclosure (if (exists? 'super environment)
+                           (lookup 'super environment)
+                           '())) ; class closure has variabes in order
+             (class-vars (if (null? cclosure)
+                             '()
+                             (get-class-vars cclosure environment)))
              (instance-vars (if (null? oclosure)
                                   '()
                                   (instance-fields oclosure)))) ; reverse order of the instance field values
@@ -279,8 +282,18 @@
         ((exists? var-name environment) (lookup var-name environment)) ; if variable exists in the current environment, use the value of the variable
         (else
          ; get the ith value of reverse order value list and i is index to end of the variables of the class closure
-         (unbox (get-ith-val-in-env (instance-fields oclosure) (- (environment-length instance-vars) (+ (environment-indexof var-name instance-vars) 1)))))))))
+         ;(lookup var-name instance-vars))))))
+         (unbox (get-ith-val-in-env (instance-fields oclosure) (- (environment-length class-vars) (+ (environment-indexof var-name class-vars) 1)))))))))
 
+(define get-class-vars
+  (lambda (cclosure environment)
+    (let ((cclosure-vars (cclosure-vars cclosure))
+          (sclosure ((cclosure-superfun cclosure) environment)))
+      (cond
+        ((null? sclosure) cclosure-vars)
+        (else
+         (append cclosure-vars (get-class-vars sclosure environment)))))))
+           
 (define environment-length
   (lambda (environment)
     (cond
@@ -309,7 +322,7 @@
 (define eval-new
   (lambda (class-name environment)
     (let ((cclosure (lookup class-name environment)))
-      (list (get-instance-fields cclosure environment) ; all the variables accessible in class-name in reverse order
+      (list (reverse-environment (get-instance-fields cclosure environment)) ; all the variables accessible in class-name in reverse order
             cclosure)))) ; referring to superclass class and not superclass instance
 
 (define get-instance-fields
@@ -318,8 +331,8 @@
       (cond
         ((null? sclosure) (environment-shallow-copy (cclosure-vars cclosure))) ; We have to assume that if there's no parent class, the parent sclosure is '()
         (else
-         (append (environment-shallow-copy (get-instance-fields sclosure environment))
-                 (environment-shallow-copy (cclosure-vars cclosure)))))))) ; reverse order. Super class's frame before current class's frame
+         (append (environment-shallow-copy (cclosure-vars cclosure))
+                 (environment-shallow-copy (get-instance-fields sclosure environment))))))))
 
 (define reverse-environment
   (lambda (env)
@@ -383,7 +396,7 @@
                               (lookup 'this environment)
                               (eval-expression (dot-lhs (func-name expr)) environment throw))) ; object closure only contains class closure and instance fields
                 (cclosure (cond
-                            ((eq? (dot-lhs (func-name expr)) 'super) (lookup 'super environment))
+                            ((eq? (dot-lhs (func-name expr)) 'super) ((cclosure-superfun (lookup 'super environment)) environment)) ; Now that super stores the cclosure
                             ((eq? (dot-lhs (func-name expr)) 'this) (instance-class oclosure))
                             ((not (exists? 'this environment)) oclosure) ; check static environment
                             (else (instance-class oclosure))))
@@ -393,7 +406,7 @@
                 (superclosure ((cclosure-superfun ((caddr closure) environment)) environment)))
          (interpret-statement-list (func-body closure)
                                    (insert 'super
-                                           superclosure
+                                           ((caddr closure) environment) ; Brian- I'm going to store the cclosure in super rather than the superclosure
                                            (insert 'this
                                                    oclosure
                                                    (insert-all (formal-params closure)
@@ -698,7 +711,6 @@
                             (makestr (string-append str (string-append " " (symbol->string (car vals)))) (cdr vals))))))
       (error-break (display (string-append str (makestr "" vals)))))))
 
-
 ;(interpret "test/part4/0" 'A)
 ;(interpret "test/part4/1" 'A)
 ;(interpret "test/part4/2" 'A)
@@ -706,10 +718,10 @@
 ;(interpret "test/part4/4" 'A)
 ;(interpret "test/part4/5" 'A)
 ;(interpret "test/part4/6" 'A)
-(interpret "test/part4/7" 'C)
-;(interpret "test/part4/8")
-;(interpret "test/part4/9")
-;(interpret "test/part4/10")
-;(interpret "test/part4/11")
-;(interpret "test/part4/12")
-;(interpret "test/part4/13")
+;(interpret "test/part4/7" 'C)
+(interpret "test/part4/8" 'Square)
+;(interpret "test/part4/9" 'Square)
+;(interpret "test/part4/10" 'List)
+;(interpret "test/part4/11" 'List)
+;(interpret "test/part4/12" 'List)
+;(interpret "test/part4/13" 'List)
