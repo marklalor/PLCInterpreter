@@ -57,8 +57,7 @@
       ((eq? 'begin (statement-type statement)) (interpret-block statement environment return break continue throw))
       ((eq? 'throw (statement-type statement)) (interpret-throw statement environment throw))
       ((eq? 'try (statement-type statement)) (interpret-try statement environment return break continue throw))
-      ((eq? 'static-function (statement-type statement)) (interpret-function statement environment return break continue throw)) ;only main is static
-      ((eq? 'function (statement-type statement)) (interpret-function statement environment return break continue throw))
+      
       ((eq? 'funcall (statement-type statement)) (interpret-function-call statement environment return break continue throw))                                                        
       (else (myerror "Unknown statement:" (statement-type statement))))))
 
@@ -78,15 +77,21 @@
           [throw (lambda (env) (throw-error env))])
       (insert (class-name statement)
               (list (interpret-statement-list (filter-sublists (class-body statement) 'var)
-                                              environment return break continue throw)
-                    (interpret-statement-list (append (filter-sublists (class-body statement) 'function)
+                                              (newenvironment) return break continue throw)
+                    (interpret-functions (append (filter-sublists (class-body statement) 'function)
                                                       (filter-sublists (class-body statement) 'static-function))
-                                              environment return break continue throw)
+                                         (class-name statement)
+                                         (newenvironment) return break continue throw)
                     (lambda (env) (if (extends? (class-superclass statement))
                                       (lookup (superclass-name (class-superclass statement)) env)
                                       '())))
               environment))))
 
+(define interpret-functions
+  (lambda (function-list class-name environment return break continue throw)
+    (if (null? function-list)
+        environment
+        (interpret-functions (cdr function-list) class-name (interpret-function (car function-list) class-name environment return break continue throw) return break continue throw))))
 
 ; Calls the return continuation with the given expression value
 (define interpret-return
@@ -194,15 +199,17 @@
 
 ; Adds a function definition to the environment and returns the result of the new state
 (define interpret-function
-  (lambda (statement environment return break continue throw)
-    (add-function-binding statement environment)))
+  (lambda (statement class-name environment return break continue throw)
+    (add-function-binding statement class-name environment)))
 
 ; Takes a function definition and adds it to the environment
 (define add-function-binding
-  (lambda (statement environment)
+  (lambda (statement class-name environment)
     (if (global-environment? environment)
-        (insert (func-name statement) (list (param-body statement) get-global-environment-func) environment)
-        (insert (func-name statement) (list (param-body statement) (get-snapshot-environment-func (func-name statement))) environment))))
+        (insert (func-name statement) (list (param-body statement) get-global-environment-func (lambda(env) (lookup class-name env))) environment)
+        (insert (func-name statement)
+                (list (param-body statement) (get-snapshot-environment-func (func-name statement)) (lambda(env) (lookup class-name env)))
+                environment))))
 
 ; Takes an environment and returns the global frame of the environment
 (define get-global-environment-func
@@ -276,18 +283,18 @@
 ; returns instance closure
 (define eval-new
   (lambda (class-name environment)
-    (let ((oclosure (lookup class-name environment)))
-      (list (get-instance-fields oclosure environment) ; all the variables accessible in class-name in reverse order
-            oclosure)))) ; referring to superclass class and not superclass instance
+    (let ((cclosure (lookup class-name environment)))
+      (list (get-instance-fields cclosure environment) ; all the variables accessible in class-name in reverse order
+            cclosure)))) ; referring to superclass class and not superclass instance
 
 (define get-instance-fields
   (lambda (cclosure environment)
     (let ((sclosure ((cclosure-superfun cclosure) environment)))
       (cond
-        ((null? sclosure) (newenvironment)) ; We have to assume that if there's no parent class, the parent sclosure is '()
+        ((null? sclosure) (environment-shallow-copy (cclosure-vars cclosure))) ; We have to assume that if there's no parent class, the parent sclosure is '()
         (else
-         (append (environment-shallow-copy (get-instance-fields sclosure))
-                 (environment-shallow-copy (cclosure-vars cclosure environment)))))))) ; reverse order. Super class's frame before current class's frame
+         (append (environment-shallow-copy (get-instance-fields sclosure environment))
+                 (environment-shallow-copy (cclosure-vars cclosure)))))))) ; reverse order. Super class's frame before current class's frame
 
 (define reverse-environment
   (lambda (env)
@@ -347,12 +354,18 @@
   (lambda (expr environment throw)
     (call/cc
      (lambda (function-return)
-       (letrec ((oclosure (eval-expression (dot-lhs (func-name expr)) environment throw)) ; object closure only contains class closure and instance fields
-                (cclosure (instance-class oclosure))
+       (letrec ((oclosure (if (or (eq? (dot-lhs (func-name expr)) 'super) (eq? (dot-lhs (func-name expr)) 'this)) ; if function is called on this or super, oclosure is 'this
+                              (lookup 'this environment)
+                              (eval-expression (dot-lhs (func-name expr)) environment throw))) ; object closure only contains class closure and instance fields
+                (cclosure (cond
+                            ((eq? (dot-lhs (func-name expr)) 'super) (lookup 'super environment))
+                            ((eq? (dot-lhs (func-name expr)) 'this) (instance-class oclosure))
+                            ((not (exists? 'this environment)) oclosure) ; check static environment
+                            (else (instance-class oclosure))))
                 (closure (lookup-fun (dot-rhs (func-name expr))
                                      cclosure
                                      environment))
-                (superclosure ((cclosure-superfun cclosure) environment)))
+                (superclosure ((cclosure-superfun ((caddr closure) environment)) environment)))
          (interpret-statement-list (func-body closure)
                                    (insert 'super
                                            superclosure
@@ -411,6 +424,11 @@
 ;-----------------
 ; HELPER FUNCTIONS
 ;-----------------
+
+(define class?
+  (lambda (oclosure)
+    (eq? (length oclosure) 3)))
+
 
 (define class-name cadr)
 (define class-superclass caddr)
@@ -656,13 +674,14 @@
       (error-break (display (string-append str (makestr "" vals)))))))
 
 
+;(interpret "test/part4/0" 'A)
 ;(interpret "test/part4/1" 'A)
 ;(interpret "test/part4/2" 'A)
 ;(interpret "test/part4/3" 'A)
 ;(interpret "test/part4/4" 'A)
 ;(interpret "test/part4/5" 'A)
 ;(interpret "test/part4/6" 'A)
-;(interpret "test/part4/7" 'C)
+(interpret "test/part4/7" 'C)
 ;(interpret "test/part4/8")
 ;(interpret "test/part4/9")
 ;(interpret "test/part4/10")
