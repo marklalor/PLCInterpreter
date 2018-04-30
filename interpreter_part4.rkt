@@ -116,9 +116,11 @@
           (update (dot-rhs assign-lhs)
                   (eval-expression (get-assign-rhs statement) environment throw)
                   (instance-fields (lookup (dot-lhs assign-lhs) environment)))
-          (update assign-lhs (eval-expression (get-assign-rhs statement) environment throw) (if (exists? assign-lhs environment)
+          ; Update is a side effect to update the environment/instance fields. Need to return environment in the end so begin is used
+          (begin (update assign-lhs (eval-expression (get-assign-rhs statement) environment throw) (if (exists? assign-lhs environment)
                                                                                                 environment
-                                                                                                (instance-fields oclosure)))))))
+                                                                                                (instance-fields oclosure)))
+                 environment)))))
 
 ; We need to check if there is an else condition.  Otherwise, we evaluate the expression and do the right thing.
 (define interpret-if
@@ -421,8 +423,10 @@
 
 (define lookup-fun
   (lambda (fun-name cclosure environment)
-    (let ((fun-env (cclosure-funs cclosure))
-          (sclosure ((cclosure-superfun cclosure) environment)))
+    (letrec ((fun-env (cclosure-funs cclosure))
+             (lamb (cdr cclosure))
+             (lam (cddr cclosure))
+             (sclosure ((cclosure-superfun cclosure) environment)))
       (cond
         ((exists? fun-name fun-env) (lookup fun-name fun-env))
         (else
@@ -725,9 +729,9 @@
 ;(interpret "test/part4/5" 'A)
 ;(interpret "test/part4/6" 'A)
 ;(interpret "test/part4/7" 'C)
-(interpret "test/part4/8" 'Square)
-(interpret "test/part4/9" 'Square)
-(interpret "test/part4/10" 'List)
+;(interpret "test/part4/8" 'Square)
+;(interpret "test/part4/9" 'Square)
+;(interpret "test/part4/10" 'List)
 ;(interpret "test/part4/11" 'List)
-;(interpret "test/part4/12" 'List)
+(interpret "test/part4/12" 'List)
 ;(interpret "test/part4/13" 'List)
