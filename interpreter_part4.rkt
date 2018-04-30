@@ -56,6 +56,7 @@
       ((eq? 'break (statement-type statement)) (break environment))
       ((eq? 'begin (statement-type statement)) (interpret-block statement environment return break continue throw))
       ((eq? 'throw (statement-type statement)) (interpret-throw statement environment throw))
+      ((eq? 'function (statement-type statement)) (interpret-function statement (lambda (env) (lookup 'super environment)) environment return break continue throw))
       ((eq? 'try (statement-type statement)) (interpret-try statement environment return break continue throw))
       
       ((eq? 'funcall (statement-type statement)) (interpret-function-call statement environment return break continue throw))                                                        
@@ -91,7 +92,7 @@
   (lambda (function-list class-name environment return break continue throw)
     (if (null? function-list)
         environment
-        (interpret-functions (cdr function-list) class-name (interpret-function (car function-list) class-name environment return break continue throw) return break continue throw))))
+        (interpret-functions (cdr function-list) class-name (interpret-function (car function-list) (lambda(env) (lookup class-name env)) environment return break continue throw) return break continue throw))))
 
 ; Calls the return continuation with the given expression value
 (define interpret-return
@@ -113,9 +114,10 @@
                         (lookup 'this environment)
                         '())))
       (if (list? assign-lhs) ; should abstract as dot?
-          (update (dot-rhs assign-lhs)
+          (begin (update (dot-rhs assign-lhs)
                   (eval-expression (get-assign-rhs statement) environment throw)
                   (instance-fields (lookup (dot-lhs assign-lhs) environment)))
+                 environment)
           ; Update is a side effect to update the environment/instance fields. Need to return environment in the end so begin is used
           (begin (update assign-lhs (eval-expression (get-assign-rhs statement) environment throw) (if (exists? assign-lhs environment)
                                                                                                 environment
@@ -206,16 +208,16 @@
 
 ; Adds a function definition to the environment and returns the result of the new state
 (define interpret-function
-  (lambda (statement class-name environment return break continue throw)
-    (add-function-binding statement class-name environment)))
+  (lambda (statement cclosure environment return break continue throw)
+    (add-function-binding statement cclosure environment)))
 
 ; Takes a function definition and adds it to the environment
 (define add-function-binding
-  (lambda (statement class-name environment)
+  (lambda (statement cclosure environment)
     (if (global-environment? environment)
-        (insert (func-name statement) (list (param-body statement) get-global-environment-func (lambda(env) (lookup class-name env))) environment)
+        (insert (func-name statement) (list (param-body statement) get-global-environment-func cclosure) environment)
         (insert (func-name statement)
-                (list (param-body statement) (get-snapshot-environment-func (func-name statement)) (lambda(env) (lookup class-name env)))
+                (list (param-body statement) (get-snapshot-environment-func (func-name statement)) cclosure)
                 environment))))
 
 ; Takes an environment and returns the global frame of the environment
@@ -409,11 +411,10 @@
                             (else (instance-class oclosure))))
                 (closure (lookup-fun (dot-rhs (func-name expr))
                                      cclosure
-                                     environment))
-                (superclosure ((cclosure-superfun ((caddr closure) environment)) environment)))
+                                     environment))) ;caddr is the function that takes an environment and returns the classclosure which it belongs to
          (interpret-statement-list (func-body closure)
                                    (insert 'super
-                                           ((caddr closure) environment) ; Brian- I'm going to store the cclosure in super rather than the superclosure
+                                           ((function-cclosure closure) environment) ; Brian- I'm going to store the cclosure in super rather than the superclosure
                                            (insert 'this
                                                    oclosure
                                                    (insert-all (formal-params closure)
@@ -421,16 +422,20 @@
                                                                (push-frame ((environment-function closure) environment)))))
                                    function-return break-error continue-error (lambda (v func-env) (throw v environment))))))))
 
+(define function-cclosure caddr)
+
 (define lookup-fun
   (lambda (fun-name cclosure environment)
-    (letrec ((fun-env (cclosure-funs cclosure))
-             (lamb (cdr cclosure))
-             (lam (cddr cclosure))
-             (sclosure ((cclosure-superfun cclosure) environment)))
-      (cond
-        ((exists? fun-name fun-env) (lookup fun-name fun-env))
-        (else
-         (lookup-fun fun-name sclosure environment))))))
+    (if (exists? fun-name environment)
+        (lookup fun-name environment) ; If function is defined in the environment, use the one in the environment (hides the instance method one anyways)
+        (letrec ((fun-env (cclosure-funs cclosure))
+                 (lamb (cdr cclosure))
+                 (lam (cddr cclosure))
+                 (sclosure ((cclosure-superfun cclosure) environment)))
+          (cond
+            ((exists? fun-name fun-env) (lookup fun-name fun-env))
+            (else
+             (lookup-fun fun-name sclosure environment)))))))
 
 ; Evaluate a binary (or unary) operator.  Although this is not dealing with side effects, I have the routine evaluate the left operand first and then
 ; pass the result to eval-binary-op2 to evaluate the right operand.  This forces the operands to be evaluated in the proper order in case you choose
@@ -721,17 +726,17 @@
                             (makestr (string-append str (string-append " " (symbol->string (car vals)))) (cdr vals))))))
       (error-break (display (string-append str (makestr "" vals)))))))
 
-;(interpret "test/part4/0" 'A)
-;(interpret "test/part4/1" 'A)
-;(interpret "test/part4/2" 'A)
-;(interpret "test/part4/3" 'A)
-;(interpret "test/part4/4" 'A)
-;(interpret "test/part4/5" 'A)
-;(interpret "test/part4/6" 'A)
-;(interpret "test/part4/7" 'C)
-;(interpret "test/part4/8" 'Square)
-;(interpret "test/part4/9" 'Square)
-;(interpret "test/part4/10" 'List)
-;(interpret "test/part4/11" 'List)
+(interpret "test/part4/0" 'A)
+(interpret "test/part4/1" 'A)
+(interpret "test/part4/2" 'A)
+(interpret "test/part4/3" 'A)
+(interpret "test/part4/4" 'A)
+(interpret "test/part4/5" 'A)
+(interpret "test/part4/6" 'A)
+(interpret "test/part4/7" 'C)
+(interpret "test/part4/8" 'Square)
+(interpret "test/part4/9" 'Square)
+(interpret "test/part4/10" 'List)
+(interpret "test/part4/11" 'List)
 (interpret "test/part4/12" 'List)
 ;(interpret "test/part4/13" 'List)
