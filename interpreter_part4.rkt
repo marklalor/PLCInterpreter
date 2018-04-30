@@ -46,7 +46,7 @@
 (define interpret-statement
   (lambda (statement environment return break continue throw)
     (cond
-      ((eq? 'class (statement-type statement)) (interpret-class statement environment))
+      ((eq? 'class (statement-type statement)) (interpret-class statement environment return break continue throw))
       ((eq? 'return (statement-type statement)) (interpret-return statement environment return throw))
       ((eq? 'var (statement-type statement)) (interpret-declare statement environment throw))
       ((eq? '= (statement-type statement)) (interpret-assign statement environment throw))
@@ -58,10 +58,10 @@
       ((eq? 'throw (statement-type statement)) (interpret-throw statement environment throw))
       ((eq? 'function (statement-type statement)) (interpret-function statement (lambda (env) (lookup 'super environment)) environment return break continue throw))
       ((eq? 'try (statement-type statement)) (interpret-try statement environment return break continue throw))
-      
       ((eq? 'funcall (statement-type statement)) (interpret-function-call statement environment return break continue throw))                                                        
       (else (myerror "Unknown statement:" (statement-type statement))))))
 
+; Filters statements by their statement type
 (define filter-sublists
   (lambda (list query)
     (cond
@@ -71,23 +71,20 @@
 
 ; Adds the class closure to the environment
 (define interpret-class
-  (lambda (statement environment)
-    (let ([return (lambda (env) (break-error env))]
-          [break (lambda (env) (break-error env))]
-          [continue (lambda (env) (continue-error env))]
-          [throw (lambda (env) (throw-error env))])
-      (insert (class-name statement)
-              (list (interpret-statement-list (filter-sublists (class-body statement) 'var)
-                                              (newenvironment) return break continue throw)
-                    (interpret-functions (append (filter-sublists (class-body statement) 'function)
-                                                      (filter-sublists (class-body statement) 'static-function))
-                                         (class-name statement)
-                                         (newenvironment) return break continue throw)
-                    (lambda (env) (if (extends? (class-superclass statement))
-                                      (lookup (superclass-name (class-superclass statement)) env)
-                                      '())))
-              environment))))
+  (lambda (statement environment return break continue throw)
+    (insert (class-name statement)
+            (list (interpret-statement-list (filter-sublists (class-body statement) 'var)
+                                            (newenvironment) return break continue throw)
+                  (interpret-functions (append (filter-sublists (class-body statement) 'function)
+                                               (filter-sublists (class-body statement) 'static-function))
+                                       (class-name statement)
+                                       (newenvironment) return break continue throw)
+                  (lambda (env) (if (extends? (class-superclass statement))
+                                    (lookup (superclass-name (class-superclass statement)) env)
+                                    '())))
+            environment)))
 
+; Returns an environment after interpreting the function list. This function takes a class to assign an associating class closure to each function closure
 (define interpret-functions
   (lambda (function-list class-name environment return break continue throw)
     (if (null? function-list)
@@ -115,13 +112,13 @@
                         '())))
       (if (list? assign-lhs) ; should abstract as dot?
           (begin (update (dot-rhs assign-lhs)
-                  (eval-expression (get-assign-rhs statement) environment throw)
-                  (instance-fields (lookup (dot-lhs assign-lhs) environment)))
+                         (eval-expression (get-assign-rhs statement) environment throw)
+                         (instance-fields (lookup (dot-lhs assign-lhs) environment)))
                  environment)
           ; Update is a side effect to update the environment/instance fields. Need to return environment in the end so begin is used
           (begin (update assign-lhs (eval-expression (get-assign-rhs statement) environment throw) (if (exists? assign-lhs environment)
-                                                                                                environment
-                                                                                                (instance-fields oclosure)))
+                                                                                                       environment
+                                                                                                       (instance-fields oclosure)))
                  environment)))))
 
 ; We need to check if there is an else condition.  Otherwise, we evaluate the expression and do the right thing.
@@ -140,7 +137,7 @@
        (letrec ((loop (lambda (condition body environment)
                         (if (eval-expression condition environment throw)
                             (loop condition body (interpret-statement body environment return break (lambda (env) (break (loop condition body env))) throw))
-                         environment))))
+                            environment))))
          (loop (get-condition statement) (get-body statement) environment))))))
 
 ; Interprets a block.  The break, continue, and throw continuations must be adjusted to pop the environment
@@ -273,27 +270,27 @@
       ((eq? (statement-type expr) 'funcall) (eval-function (to-dot-expr expr) environment throw))
       (else (eval-operator expr environment throw)))))
 
+; Returns the value of a variable. If the variable doesn't exist in the environment, it will look it up in the instance 'this
 (define eval-var
   (lambda (var-name environment)
     (letrec ((oclosure (if (exists? 'this environment)
                            (lookup 'this environment)
-                           '())) ; object closure has variables in reverse order
+                           '()))
              (cclosure (if (exists? 'super environment)
                            (lookup 'super environment)
-                           '())) ; class closure has variabes in order
+                           '())) 
              (class-vars (if (null? cclosure)
                              '()
                              (get-class-vars cclosure environment)))
              (instance-vars (if (null? oclosure)
-                                  '()
-                                  (instance-fields oclosure)))) ; reverse order of the instance field values
+                                '()
+                                (instance-fields oclosure))))
       (cond
-        ((exists? var-name environment) (lookup var-name environment)) ; if variable exists in the current environment, use the value of the variable
+        ((exists? var-name environment) (lookup var-name environment)) 
         (else
-         ; get the ith value of reverse order value list and i is index to end of the variables of the class closure
-         ;(lookup var-name instance-vars))))))
          (unbox (get-ith-val-in-env (instance-fields oclosure) (- (environment-length class-vars) (+ (environment-indexof var-name class-vars) 1)))))))))
 
+; Recursively finds all accessible variables of a class given the class closure
 (define get-class-vars
   (lambda (cclosure environment)
     (let ((cclosure-vars (cclosure-vars cclosure))
@@ -302,7 +299,8 @@
         ((null? sclosure) cclosure-vars)
         (else
          (append cclosure-vars (get-class-vars sclosure environment)))))))
-           
+
+; Counts the number of variables in an environment
 (define environment-length
   (lambda (environment)
     (cond
@@ -310,9 +308,12 @@
       (else
        (+ (length (variables (topframe environment))) (environment-length (remainingframes environment)))))))
 
+; Finds the index of a variable in an environment
 (define environment-indexof
   (lambda (var environment)
     (environment-indexof-helper var environment 0)))
+
+; Helper function for environment-indexof
 (define environment-indexof-helper
   (lambda (var environment acc)
     (cond
@@ -322,56 +323,63 @@
       (else
        (environment-indexof-helper var (remainingframes environment) (+ acc (length (variables (topframe environment)))))))))
 
+; Returns the value of a dot expression
 (define eval-dot
   (lambda (expr environment throw)
     (let ((oclosure (eval-expression (dot-lhs expr) environment throw)))    
       (eval-expression (dot-rhs expr) (instance-fields oclosure) throw))))
 
-; returns instance closure
+; Returns an instance closure given class-name
 (define eval-new
   (lambda (class-name environment)
     (let ((cclosure (lookup class-name environment)))
-      (list (reverse-environment (get-instance-fields cclosure environment)) ; all the variables accessible in class-name in reverse order
-            cclosure)))) ; referring to superclass class and not superclass instance
+      (list (reverse-environment (get-instance-fields cclosure environment))
+            cclosure))))
 
+; Takes a class closure and returns a copy of the variables in form of an environment
 (define get-instance-fields
   (lambda (cclosure environment)
     (let ((sclosure ((cclosure-superfun cclosure) environment)))
       (cond
-        ((null? sclosure) (environment-shallow-copy (cclosure-vars cclosure))) ; We have to assume that if there's no parent class, the parent sclosure is '()
+        ((null? sclosure) (environment-shallow-copy (cclosure-vars cclosure)))
         (else
          (append (environment-shallow-copy (cclosure-vars cclosure))
                  (environment-shallow-copy (get-instance-fields sclosure environment))))))))
 
+; Reverses each frame and reverses the order of the frames
 (define reverse-environment
   (lambda (env)
     (reverse* (reverse env))))
 
+; Reverses the list and its sublists
 (define reverse*
- (lambda (l)
-   (cond
-     ((null? l) '())
-     ((list? (car l)) (cons (reverse* (car l)) (reverse* (cdr l))))
-     (else
-      (append (reverse* (cdr l)) (list (car l)))))))
+  (lambda (l)
+    (cond
+      ((null? l) '())
+      ((list? (car l)) (cons (reverse* (car l)) (reverse* (cdr l))))
+      (else
+       (append (reverse* (cdr l)) (list (car l)))))))
 
+; Gets the ith element in the environment
 (define get-ith-val-in-env
- (lambda (env i)
-   (list-ref (combine-env-vals env) i)))
+  (lambda (env i)
+    (list-ref (combine-env-vals env) i)))
 
+; Combines all the values in the environment into a single list
 (define combine-env-vals
- (lambda (env)
-   (cond
-     ((null? env) '())
-     (else (append (cadr (car env)) (combine-env-vals (cdr env)))))))
+  (lambda (env)
+    (cond
+      ((null? env) '())
+      (else (append (store (topframe env)) (combine-env-vals (remainingframes env)))))))
 
+; Copies all the values in the environment into a new environment
 (define environment-shallow-copy
   (lambda (environment)
     (cond
       ((null? environment) environment)
       (else
        (cons (frame-shallow-copy (topframe environment))
-          (environment-shallow-copy (remainingframes environment)))))))
+             (environment-shallow-copy (remainingframes environment)))))))
 
 ; copy class closure
 (define frame-shallow-copy
@@ -382,11 +390,13 @@
        (add-to-frame (car (variables frame)) (lookup-in-frame (car (variables frame)) frame)
                      (frame-shallow-copy (list (cdr (variables frame)) (cdr (cadr frame)))))))))
 
+; Converts an expression to be a dotted expression
+; Pre-condition: input for expr is usually (funcall ... params)
 (define to-dot-expr
   (lambda (expr)
-    (if (list? (cadr expr)) ; Input for expr is usually (funcall ... params)
-      expr
-      (append (list 'funcall (list 'dot 'this (cadr expr))) (cddr expr)))))
+    (if (list? (cadr expr)) 
+        expr
+        (append (list 'funcall (list 'dot 'this (cadr expr))) (cddr expr)))))
 
 ; Uses eval-expression on a list
 (define eval-expression-list
@@ -396,33 +406,31 @@
         (cons (eval-expression (car expr-list) environment throw) (eval-expression-list (cdr expr-list) environment throw)))))
 
 ; Gives the value result of a function
-; pre-condition: expr always contains a dot expression
+; Pre-condition: expr always contains a dot expression
 (define eval-function
   (lambda (expr environment throw)
     (call/cc
      (lambda (function-return)
-       (letrec ((oclosure (if (or (eq? (dot-lhs (func-name expr)) 'super) (eq? (dot-lhs (func-name expr)) 'this)) ; if function is called on this or super, oclosure is 'this
+       (letrec ((oclosure (if (or (eq? (dot-lhs (func-name expr)) 'super) (eq? (dot-lhs (func-name expr)) 'this))
                               (lookup 'this environment)
-                              (eval-expression (dot-lhs (func-name expr)) environment throw))) ; object closure only contains class closure and instance fields
+                              (eval-expression (dot-lhs (func-name expr)) environment throw)))
                 (cclosure (cond
-                            ((eq? (dot-lhs (func-name expr)) 'super) ((cclosure-superfun (lookup 'super environment)) environment)) ; Now that super stores the cclosure
+                            ((eq? (dot-lhs (func-name expr)) 'super) ((cclosure-superfun (lookup 'super environment)) environment))
                             ((eq? (dot-lhs (func-name expr)) 'this) (instance-class oclosure))
-                            ((not (exists? 'this environment)) oclosure) ; check static environment
+                            ((not (exists? 'this environment)) oclosure)
                             (else (instance-class oclosure))))
                 (closure (lookup-fun (dot-rhs (func-name expr))
                                      cclosure
-                                     environment))) ;caddr is the function that takes an environment and returns the classclosure which it belongs to
+                                     environment)))
          (interpret-statement-list (func-body closure)
                                    (insert 'super
-                                           ((function-cclosure closure) environment) ; Brian- I'm going to store the cclosure in super rather than the superclosure
+                                           ((func-cclosure closure) environment)
                                            (insert 'this
                                                    oclosure
                                                    (insert-all (formal-params closure)
                                                                (eval-expression-list (actual-params expr) environment throw)
                                                                (push-frame ((environment-function closure) environment)))))
                                    function-return break-error continue-error (lambda (v func-env) (throw v environment))))))))
-
-(define function-cclosure caddr)
 
 (define lookup-fun
   (lambda (fun-name cclosure environment)
@@ -477,29 +485,18 @@
 ;-----------------
 ; HELPER FUNCTIONS
 ;-----------------
-
-(define class?
-  (lambda (oclosure)
-    (eq? (length oclosure) 3)))
-
-
 (define class-name cadr)
 (define class-superclass caddr)
 (define class-body cadddr)
-
 (define superclass-name cadr)
-
 (define extends?
   (lambda (expr)
     (not (null? expr))))
-
 (define cclosure-vars car)
 (define cclosure-funs cadr)
 (define cclosure-superfun caddr)
-
 (define dot-lhs cadr)
 (define dot-rhs caddr)
-
 (define instance-fields car)
 (define instance-class cadr)
     
@@ -537,10 +534,11 @@
 (define get-try operand1)
 (define get-catch operand2)
 (define get-finally operand3); abstractions for getting function name and closure from a statement 
-(define func-name cadr)
 (define param-body cddr)
 (define formal-params caar)
 (define environment-function cadr)
+(define func-name cadr)
+(define func-cclosure caddr)
 (define func-body
   (lambda (closure)
     (cadr (car closure))))
@@ -739,4 +737,4 @@
 (interpret "test/part4/10" 'List)
 (interpret "test/part4/11" 'List)
 (interpret "test/part4/12" 'List)
-;(interpret "test/part4/13" 'List)
+(interpret "test/part4/13" 'C)
