@@ -4,13 +4,13 @@
 (require "interpreter.rkt")
 (require rackunit)
 
-(provide (all-defined-out))
+
 
 (define test-program
   (lambda (category id main-class expected)
     (check-eq? (interpret (string-join (list "test/" category "/" id) "") main-class) expected)))
 
-(test-program "objects" "0" 'A 5)
+(test-program "objects" "0" 'A 0)
 (test-program "objects" "1" 'A 15)
 (test-program "objects" "2" 'A 12)
 (test-program "objects" "3" 'A 125)
