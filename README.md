@@ -1,4 +1,4 @@
-#PLCInterpreter
+# PLCInterpreter
 
 This interpreter was a semester-long project for the class **Programming Language Concepts (EECS 345)** at Case Western Reserve University. Almost all development was done tri-programming, which turned out to be extremely helpful for this project because it proved to be really tricky to design correctly (at least for us newbies) and tricky to make sense of the debugging data. Each individual would have eureka moments when everyone else was stuck that helped drive progress forward!
 
@@ -18,7 +18,7 @@ There were many different stages of functionality that the interpreter had to ac
 ```shell
 ./interpreter.sh /path/to/program_src MainClassName
 ```
-##Sample Programs
+## Sample Programs
 
 #### Hello Wor... err. Hello Zero (test/objects/0)
 ```
@@ -29,9 +29,9 @@ class A {
 }
 ```
 ```
-$ ./interpret.sh test/objects/0 A
-0
+./interpret.sh test/objects/0 A
 ```
+Output is `0`
 
 #### "Absolute Tomfoolery" (test/objects/13)
 ```
@@ -107,7 +107,7 @@ $ ./interpret.sh test/objects/13 C
 Requires the `racket` binary on your `PATH` environment variable
 
 ```shell
-$ git clone https://github.com/MarkLalor/PLCInterpreter.git && cd PLCInterpreter
-$ ./interpret.sh test/objects/12 List
-5285
+git clone https://github.com/MarkLalor/PLCInterpreter.git && cd PLCInterpreter
+./interpret.sh test/objects/12 List
 ```
+Output is `5285`
