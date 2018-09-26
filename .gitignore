@@ -1,2 +1,5 @@
 compiled/
 \#*
+*.rkt~
+*.scm~
+.DS_Store
