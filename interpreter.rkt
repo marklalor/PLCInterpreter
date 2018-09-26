@@ -2,7 +2,7 @@
 
 ; If you are using racket instead of scheme, uncomment these two lines, comment the (load "simpleParser.scm") and uncomment the (require "simpleParser.scm")
 #lang racket
-(require "classParser.scm")
+(require "parser.scm")
 (provide (all-defined-out))
 
 ; An interpreter for the simple language that uses call/cc for the continuations.  Does not handle side effects.
