@@ -107,7 +107,7 @@ $ ./interpret.sh test/objects/13 C
 Requires the `racket` binary on your `PATH` environment variable
 
 ```shell
-git clone https://github.com/MarkLalor/PLCInterpreter.git && cd PLCInterpreter
+git clone https://github.com/rowdyrotifer/PLCInterpreter.git && cd PLCInterpreter
 ./interpret.sh test/objects/12 List
 ```
 Output is `5285`
